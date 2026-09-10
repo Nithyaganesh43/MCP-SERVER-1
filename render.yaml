@@ -1,0 +1,31 @@
+# Render Infrastructure-as-Code blueprint
+# https://docs.render.com/infrastructure-as-code
+services:
+  - type: web
+    name: rytham-api
+    runtime: node
+    plan: free
+    buildCommand: cd backend && npm ci && npm run build
+    startCommand: cd backend && node dist/server.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 20.18.0
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: MCP_API_KEY
+        sync: false
+      - key: MCP_USER_ID
+        sync: false
+      - key: TIMEZONE
+        value: Asia/Kolkata
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_CALLBACK_URL
+        sync: false

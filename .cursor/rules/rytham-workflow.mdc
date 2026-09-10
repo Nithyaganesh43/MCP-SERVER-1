@@ -1,0 +1,16 @@
+---
+description: Rytham V1 — read agent.md every prompt. No independent decisions. Update agent.md after every change.
+alwaysApply: true
+---
+
+# Rytham agent contract
+
+Before any response or code change:
+
+1. Read `agent.md` at the project root.
+2. Follow it exactly.
+3. Do not invent fields, collections, modules, folders, libraries, defaults, or architecture.
+4. If `agent.md` does not specify the work, stop and ask.
+5. After every completed change, update `agent.md` so **Current state**, **File map**, and the schema contract match the repo.
+
+Do not skip `agent.md`.
