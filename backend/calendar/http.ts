@@ -46,20 +46,40 @@ function calendarFor(req: Request): CalendarService {
   return new CalendarService(new Types.ObjectId(id));
 }
 
-export function createApp(config: Config): express.Express {
-  const app = express();
-  const auth = requireAuth(config);
+const CORS_METHODS = "GET,POST,PATCH,DELETE,OPTIONS";
+const CORS_HEADERS = "Content-Type, Authorization, x-mcp-api-key, Mcp-Session-Id";
 
-  app.use((_req, res, next) => {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-    res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
-    if (_req.method === "OPTIONS") {
+function applyCors(
+  config: Config,
+): (req: Request, res: Response, next: NextFunction) => void {
+  return (req, res, next) => {
+    res.setHeader("Access-Control-Allow-Methods", CORS_METHODS);
+    res.setHeader("Access-Control-Allow-Headers", CORS_HEADERS);
+    res.setHeader("Access-Control-Allow-Credentials", "false");
+
+    if (config.nodeEnv === "production") {
+      const origin = req.headers.origin;
+      if (typeof origin === "string" && config.corsOrigins.includes(origin)) {
+        res.setHeader("Access-Control-Allow-Origin", origin);
+        res.setHeader("Vary", "Origin");
+      }
+    } else {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+    }
+
+    if (req.method === "OPTIONS") {
       res.status(204).end();
       return;
     }
     next();
-  });
+  };
+}
+
+export function createApp(config: Config): express.Express {
+  const app = express();
+  const auth = requireAuth(config);
+
+  app.use(applyCors(config));
   app.use(express.json());
 
   app.get("/health", (_req, res) => {

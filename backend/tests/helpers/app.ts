@@ -21,6 +21,7 @@ export function getTestApp(): Express {
     jwtSecret: TEST_JWT_SECRET,
     jwtExpiresIn: "7d",
     nodeEnv: "test",
+    corsOrigins: [],
   });
 }
 

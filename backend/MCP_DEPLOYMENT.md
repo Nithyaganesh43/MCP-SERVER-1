@@ -25,6 +25,9 @@ This document details how to deploy the Rytham MCP (Model Context Protocol) serv
 │                                            [ requireMcpApiKey ]             │
 │                                                      │                      │
 │                                                      ▼                      │
+│                              [ Authorization: Bearer JWT → UserContext ]    │
+│                                                      │                      │
+│                                                      ▼                      │
 │                                         [ StreamableHTTPServerTransport ]   │
 │                                                      │                      │
 │                                                      ▼                      │
@@ -47,7 +50,6 @@ The MCP Server runs in two modes:
 | `MONGODB_URI` | Yes | MongoDB Connection String | `mongodb+srv://user:pass@cluster.mongodb.net/rytham` |
 | `JWT_SECRET` | Yes | Secret for JWT signing & verification | `d5d027...` |
 | `MCP_API_KEY` | Yes (in Prod) | API key for authenticating `/mcp` requests | `rk_live_8f93a1c4b2e56789` |
-| `MCP_USER_ID` | Optional | User ID associated with API Key requests | `68c0e0010000000000000001` |
 | `TIMEZONE` | Optional | Default timezone (defaults to `Asia/Kolkata`) | `Asia/Kolkata` |
 | `PORT` | Optional | HTTP Port (defaults to `3000`, Render injects `PORT`) | `10000` |
 
@@ -76,9 +78,12 @@ The MCP Server runs in two modes:
 
 All remote requests to `/mcp` must supply the configured API key in the `X-MCP-API-Key` HTTP header.
 
+Tool calls also require `Authorization: Bearer <JWT>` on **that request**. The JWT is the backend Rytham token (`sub` is `userId`). `MCP_USER_ID` and `RYTHAM_JWT` are not used for HTTP identity.
+
 ### Header Format
 ```http
 X-MCP-API-Key: rk_live_xxxxxxxxx
+Authorization: Bearer <JWT>
 ```
 
 ### Behavior
@@ -102,7 +107,8 @@ Add the following to your `.cursor/mcp.json` or global Cursor settings:
     "rytham": {
       "url": "https://<your-render-app>.onrender.com/mcp",
       "headers": {
-        "X-MCP-API-Key": "rk_live_xxxxxxxxx"
+        "X-MCP-API-Key": "rk_live_xxxxxxxxx",
+        "Authorization": "Bearer <JWT>"
       }
     }
   }

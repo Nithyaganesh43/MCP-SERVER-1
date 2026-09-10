@@ -67,7 +67,7 @@ Identity is Google OAuth. The backend finds or creates a `users` document and is
 
 ## 4. Current state
 
-**Status:** Schema + MongoDB + Google OAuth/JWT auth + calendar tool API over REST + MCP capability layer. Auth is locked. Activities schema is frozen.
+**Status:** Schema + MongoDB + Google OAuth/JWT auth + calendar tool API over REST + MCP capability layer. Auth is locked. Activities schema is frozen. Milestone tag: `v1-backend-platform`.
 
 **Implemented**
 
@@ -77,18 +77,20 @@ Identity is Google OAuth. The backend finds or creates a `users` document and is
 - TypeScript contracts in `backend/model/activity.types.ts` and `backend/model/user.types.ts`
 - Mongoose schemas in `backend/model/activity.schema.ts` and `backend/model/user.schema.ts`
 - Public barrel `backend/model/index.ts`
-- MongoDB connection `backend/db.ts` (`MONGODB_URI` in `backend/.env`)
+- MongoDB connection `backend/db.ts` (`MONGODB_URI` in `backend/.env`; `syncIndexes` on connect)
 - Google OAuth + JWT in `backend/auth/`
 - Tool I/O in `backend/calendar/contract.ts` (`userId` never in tool input)
-- `CalendarService` in `backend/calendar/service.ts` (one method per tool; `userId` from constructor)
-- REST transport in `backend/calendar/http.ts` (Bearer JWT required; `userId` from `req.user.id`)
-- MCP capability layer in `backend/mcp/` (`userId` from JWT `sub`; stdio loads `backend/.env` from `mcp/server.ts` so `RYTHAM_JWT` is present even if Cursor cwd differs; missing JWT is `UNAUTHORIZED`)
+- `CalendarService` in `backend/calendar/service.ts` (one method per tool; `userId` from constructor; `reschedule` uses `updatedAt` optimistic lock, always writes `schedule.endAt` including null, and a Mongo transaction when the topology supports it; `suggest_slot` reserves unscheduled floating tasks into gaps)
+- Recurrence expansion in `backend/calendar/recurrence.ts` (in-memory inside query windows; no extra documents)
+- REST transport in `backend/calendar/http.ts` (Bearer JWT required; `userId` from `req.user.id`; production CORS allowlist)
+- MCP capability layer in `backend/mcp/` (`userId` from JWT `sub`; HTTP Streamable `/mcp` reads `Authorization: Bearer <JWT>` per request; `MCP_USER_ID` is not used at runtime; stdio loads `backend/.env` from `mcp/server.ts` so `RYTHAM_JWT` is present even if Cursor cwd differs; missing JWT is `UNAUTHORIZED`; SDK capabilities are tools + resources + prompts; `CallTool` sets `isError: true` when the tool envelope is a failure)
+- Streamable HTTP sessions: `mcp/sessionManager.ts` maps `Mcp-Session-Id` to one transport + SDK server; `/mcp` reuses that transport; DELETE/`onclose` drops the session and closes the server
 - Process entry `backend/server.ts`
-- End-to-End API, Auth, and MCP test suite with Jest + Supertest + MongoDB in `backend/tests/`
+- Hosted MCP on Render (`https://rytham-mcp.onrender.com`); Cursor `.cursor/mcp.json` uses Streamable HTTP `url` `https://rytham-mcp.onrender.com/mcp` and header `X-MCP-API-Key` (value lives only in that file, never here; file is gitignored via root `.gitignore`)
+- End-to-End API, Auth, and MCP test suite with Jest + Supertest + MongoDB in `backend/tests/` (indexes synced before queries)
 
 **Not implemented (do not start unless the user asks)**
 
-- Recurrence expansion (`activity_instances`)
 - Notifications, memories
 - UI
 - Product planner / AI Orchestrator (specified in `plan.md`; not coded)
@@ -105,8 +107,10 @@ Identity is Google OAuth. The backend finds or creates a `users` document and is
 PersonalAi/
   agent.md                          ← this workflow (update every change)
   plan.md                           ← AI Orchestrator spec (not implemented)
+  .gitignore                        ← `.cursor/mcp.json`, root `.env`
+  render.yaml                       ← Render web service blueprint
   .cursor/rules/rytham-workflow.mdc ← always-apply: read this file first
-  .cursor/mcp.json                  ← local Cursor MCP launch; secrets must not be copied here or into this file
+  .cursor/mcp.json                  ← Cursor MCP: hosted Streamable HTTP `/mcp`; gitignored; do not copy secrets into this file
   backend/
     package.json
     package-lock.json
@@ -117,7 +121,7 @@ PersonalAi/
     .env.example                    ← keys only, no secrets
     oauth.json                      ← local Google client download; gitignored; not loaded at runtime
     server.ts                       ← load config, connect DB, listen
-    config.ts                       ← MONGODB_URI, PORT, TIMEZONE, Google OAuth, JWT
+    config.ts                       ← MONGODB_URI, PORT, TIMEZONE, Google OAuth, JWT, CORS_ORIGINS
     db.ts                           ← mongoose.connect + syncIndexes (activities + users)
     errors.ts                       ← HttpError
     model/
@@ -135,24 +139,31 @@ PersonalAi/
     calendar/
       contract.ts                   ← tool names, I/O types, parsers
       service.ts                    ← CalendarService
-      http.ts                       ← REST → service
-      time.ts                        subterranean day/week/month bounds, overlap, gaps
+      http.ts                       ← REST → service; production CORS
+      time.ts                       ← day/week/month bounds, overlap, gaps, floating gap reserve, zoned ymd
+      recurrence.ts                 ← expand daily/weekly/monthly/yearly inside a window
+    MCP_DEPLOYMENT.md               ← Render / remote Streamable HTTP notes
     mcp/
       manifest.ts                   ← ToolManifest, Tool, UserContext & response envelopes
       errors.ts                     ← ERROR_CODES & McpError handling
-      context.ts                    ← UserContext from JWT `sub` or explicit userId
+      context.ts                    ← UserContext from request JWT `sub` (HTTP) or `RYTHAM_JWT` (stdio) or explicit userId (tests)
       auth.ts                       ← Permission check helper
       registry.ts                   ← ToolRegistry singleton & tool discovery
       transport.ts                  ← MCP tool execution handler
-      server.ts                     ← McpServer facade & StdioServerTransport inspector runner
+      sessionManager.ts             ← Streamable HTTP session map (id → transport + SDK server)
+      httpTransport.ts              ← Express `/mcp` Streamable HTTP; session reuse
+      apiKeyAuth.ts                 ← `X-MCP-API-Key` middleware
+      logger.ts                     ← MCP request logging (no secrets)
+      server.ts                     ← McpServer facade, MCP_CAPABILITIES, wireMcpSdkHandlers, StdioServerTransport runner
       modules/
         calendar.ts                 ← 8 V1 Calendar tools registration
     tests/
       helpers/
-        db.ts                       ← MongoMemoryServer & DB cleanup helper
+        db.ts                       ← MongoMemoryServer & DB cleanup helper; syncIndexes
         seed.ts                     ← Test Google profile, test user, user_test_001 + 5 activities
         app.ts                      ← Supertest express app helper
         auth.ts                     ← Valid / expired / invalid JWT helpers
+        mcpHttp.ts                  ← MCP HTTP test app, API key + Bearer JWT headers, session helpers
       create.test.ts                ← POST /activities tests
       read.test.ts                  ← GET /activities tests
       update.test.ts                ← PATCH /activities/:id tests
@@ -171,6 +182,8 @@ PersonalAi/
       security.test.ts              ← Payload security & user isolation tests
       performance.test.ts           ← Performance smoke tests (1,000 items)
       mcp.test.ts                   ← MCP tool discovery, execution with JWT userId, permissions
+      mcp-auth.test.ts              ← MCP HTTP API key auth
+      mcp-session.test.ts           ← MCP Streamable HTTP session id, reuse, DELETE cleanup
       auth.test.ts                  ← Authentication routes tests
       protected.test.ts             ← Auth middleware protection tests
 ```
@@ -193,11 +206,14 @@ Do not add files under `backend/model/` unless the user asks. Do not add `activi
 | Auth REST | `auth/http.ts` | this file section 15 |
 | JWT | `auth/jwt.ts` | payload `sub`, `email`, `name` |
 | MCP execution | `mcp/transport.ts` | `mcp/server.ts`, `mcp/modules/calendar.ts` |
-| MCP identity | `mcp/context.ts` | JWT `sub` or explicit `userId`; stdio uses `RYTHAM_JWT` |
+| MCP HTTP sessions | `mcp/sessionManager.ts` | `mcp/httpTransport.ts` |
+| MCP identity | `mcp/context.ts` | HTTP: request `Authorization: Bearer` JWT `sub`; stdio: `RYTHAM_JWT`; tests may pass `userId` |
 | MCP permissions | `mcp/auth.ts` | `mcp/modules/calendar.ts` tool `permissions` |
 | Tool names + I/O | `calendar/contract.ts` | this file section 15–16 |
+| Recurrence expansion | `calendar/recurrence.ts` | `calendar/service.ts` list/conflicts/suggestSlot, this file section 9 |
 | Tool behavior | `calendar/service.ts` | this file section 16 |
 | REST paths | `REST_TO_TOOL` in `contract.ts` | `calendar/http.ts`, this file section 15 |
+| CORS | `calendar/http.ts` | `config.ts` `corsOrigins`, this file section 17 |
 | Env keys | `config.ts` | `.env.example`, this file section 17 |
 
 If one owner changes, update every mirror in the same turn, including this file.
@@ -245,7 +261,7 @@ Rules:
 
 - Field set is closed. Do not add fields.
 - `strict: true`. Extra keys are rejected.
-- No `versionKey`.
+- No `versionKey`. Optimistic lock for `reschedule` uses existing `updatedAt`.
 - `minimize: false` so empty `metadata` stays on the document.
 - `category` and `tags` stay free-form strings. Do not turn them into enums.
 - `metadata` is reserved for later modules. Do not read it in scheduling logic.
@@ -364,6 +380,7 @@ Indexes (activities, only these):
 1. `{ userId: 1, "schedule.startAt": 1 }`
 2. `{ userId: 1, status: 1 }`
 3. `{ userId: 1, priority: -1 }`
+4. `{ userId: 1, status: 1, "schedule.startAt": 1 }`
 
 Users: unique index on `googleId` (find-or-create).
 
@@ -371,12 +388,16 @@ Do not add indexes until the user asks.
 
 Implemented query shapes:
 
-- Day / week / month / custom: `userId` + `schedule.startAt` in `[start, end)`
+- Day / week / month / custom window `[start, end)` in the requested timezone
+- Non-recurring list: `userId` + `schedule.startAt` in `[start, end)`
+- Recurring list: `userId` + `behavior.recurrence.rule` in `daily|weekly|monthly|yearly` + stored `schedule.startAt` `< end`, then expand in memory
+- Expanded list rows use the same `activityId`; `startAt` / `endAt` are the occurrence instants; documents are not duplicated
 - Week is ISO (Monday 00:00 to next Monday 00:00) in `TIMEZONE`
 - Month is calendar month of `date` in `TIMEZONE`
 - Custom: `startAt` + `endAt` (ISO or `YYYY-MM-DD`)
-- Conflicts / suggest: pending activities with a `startAt`, overlap in memory
-- Sort list by `schedule.startAt` ascending
+- Conflicts / suggest: pending activities with a `startAt` `< window.end`, occupancy against expanded instances
+- `suggest_slot` also loads pending `floating` activities with `schedule.startAt` null and a `durationMin`, and reserves them into free gaps before choosing the requested slot
+- Sort list by occurrence `startAt` ascending
 
 ---
 
@@ -396,7 +417,9 @@ Occupancy used by conflicts and suggest_slot:
 - `endAt` present → `[startAt, endAt)`
 - else `durationMin` present → `[startAt, startAt + durationMin)`
 - else point `[startAt, startAt)`
-- no `startAt` → not occupied
+- no `startAt` → not occupied (except `suggest_slot` packing below)
+
+`suggest_slot` additionally packs pending unscheduled floating tasks (`flexibility: floating`, `startAt` null, `durationMin` set) into free gaps, higher `priority` first, using the same largest-gap placement as the requested slot. Those reserved blocks count as busy for the suggestion. Conflicts do not pack unscheduled floating tasks.
 
 Product planner rules (AI layer, not coded as auto-reschedule):
 
@@ -414,7 +437,7 @@ The API does not auto-reschedule. It returns conflict data. The AI decides what 
 **Included**
 
 - Hour-wise scheduling fields
-- Recurrence rule stored, not expanded
+- Recurrence rule stored; expanded inside `calendar.list`, `calendar.conflicts`, and `calendar.suggest_slot` query windows; not persisted
 - `fixed` / `moveable` / `floating`
 - Priority 1–5
 - Reminder offsets
@@ -607,7 +630,11 @@ New end:
 2. Else if previous `startAt` and `endAt` exist → keep that span
 3. Else keep previous `endAt` (may be null)
 
+Always persist `schedule.endAt` to that value, including `null`. Do not skip the write when duration is null.
+
 Response: `{ success: true, newEndAt }` (`newEndAt` ISO or null)
+
+Write path: `findOneAndUpdate` matching `_id`, `userId`, and `updatedAt`. Stale `updatedAt` → HTTP 409 `{ success: false, message }`. Wrapped in a Mongo transaction when the topology supports it. Tool I/O is unchanged.
 
 ### `calendar.list`
 
@@ -624,6 +651,8 @@ REST: query string on `GET /activities`.
 Response: `{ activities: CalendarActivityView[] }`
 
 Each item includes `activityId`, `title`, `note`, `category`, `startAt`, `endAt`, `durationMin`, `timezone`, `flexibility`, `recurrence`, `priority`, `reminders`, `status`, `tags`, `metadata`, `createdBy`, `createdAt`, `updatedAt`. Dates are ISO strings or null.
+
+Recurring series emit one view per occurrence whose `startAt` falls in the window. `activityId` is the stored document id on every occurrence.
 
 ### `calendar.complete`
 
@@ -649,7 +678,7 @@ Response: `{ success: true }`
 { startAt, endAt }
 ```
 
-Compares against `status: "pending"` only.
+Compares against `status: "pending"` only. Recurring series use expanded instances in the window; the same `activityId` is returned at most once.
 
 Response:
 
@@ -665,7 +694,7 @@ Response:
 
 Search window: that local calendar day `[00:00, next 00:00)`.
 
-Places `durationMin` at the **start of the largest free gap**. Tie → earlier gap. Occupied = pending activities that overlap the day.
+Places `durationMin` at the **start of the largest free gap**. Tie → earlier gap. Occupied = pending activities (including expanded recurring instances) that overlap the day, plus unscheduled pending floating tasks packed into gaps (`reserveFloatingGaps` in `time.ts`).
 
 Response:
 
@@ -681,10 +710,12 @@ If a busy block follows the chosen gap: `Largest free slot before <title>.` Else
 
 MCP is the AI tool surface. REST is not what the AI calls.
 
-- Facade: `backend/mcp/server.ts` (`createMcpServer`, stdio `runStdioServer`)
+- Facade: `backend/mcp/server.ts` (`createMcpServer`, `wireMcpSdkHandlers`, stdio `runStdioServer`)
 - Calendar tools live in `backend/mcp/modules/calendar.ts` and call `CalendarService`
 - Execution: `executeToolCall` in `mcp/transport.ts`
 - Envelope: `{ success: true, data }` or `{ success: false, error: { code, message } }`
+- SDK `CallTool` result sets `isError: true` when that envelope is a failure (including thrown `McpError` / `HttpError` mapped by `handleMcpError`)
+- SDK capabilities: `{ tools: {}, resources: {}, prompts: {} }`. `resources/list` and `prompts/list` return empty arrays. `resources/read` returns `{ contents: [] }`. `prompts/get` returns `{ messages: [] }`.
 - Tool input must not include `userId` → `VALIDATION_ERROR`
 - Unknown tool → `NOT_FOUND`
 - Missing permission → `FORBIDDEN`
@@ -692,6 +723,8 @@ MCP is the AI tool surface. REST is not what the AI calls.
 - Stdio loads dotenv from `path.resolve(__dirname, "../.env")` (`backend/.env`), not `process.cwd()`
 - Missing or invalid stdio identity → `McpError` `UNAUTHORIZED` (`Invalid or missing userId in context`); `CallTool` returns that envelope
 - Cursor MCP `mcp_auth` is not Rytham identity. `userId` is never taken from Cursor session context or tool input
+- Remote Cursor MCP: Streamable HTTP POST `/mcp` with header `X-MCP-API-Key` matching env `MCP_API_KEY`. HTTP tool identity is `Authorization: Bearer <JWT>` on **that request** (`createUserContextFromRequestAuthorization`). `MCP_USER_ID` and `RYTHAM_JWT` are not used for HTTP identity.
+- Streamable HTTP sessions: `initialize` without `Mcp-Session-Id` creates a transport, returns `Mcp-Session-Id` (`crypto.randomUUID`). Later POST/GET/DELETE reuse that transport. Unknown id → 404 JSON-RPC `-32001`. Non-initialize without id → 400 JSON-RPC `-32000`. DELETE (and transport `onclose`) drops the session and closes the SDK server. Stdio is unchanged (one process, one transport).
 - Tests and in-process calls may pass `UserContext` or `{ jwt }` / `{ userId }`
 
 Default V1 permissions: `calendar:read`, `calendar:write`, `calendar:delete`.
@@ -728,6 +761,8 @@ Keys (values live only in `backend/.env`):
 | `JWT_SECRET` | Backend JWT signing secret |
 | `JWT_EXPIRES_IN` | JWT lifetime, default `7d` |
 | `RYTHAM_JWT` | Backend JWT for MCP stdio (never a Google token) |
+| `MCP_API_KEY` | Remote `/mcp` header `X-MCP-API-Key` (required when `NODE_ENV=production`) |
+| `CORS_ORIGINS` | Comma-separated browser origins. Required when `NODE_ENV=production`. Non-production CORS is `Access-Control-Allow-Origin: *`. Production echoes a matching origin only; methods `GET,POST,PATCH,DELETE,OPTIONS`; `Access-Control-Allow-Credentials: false`. |
 
 `USER_ID` is not used. Identity is JWT `sub`.
 
@@ -746,6 +781,8 @@ Do not put URI passwords, client secrets, or JWT secrets in this file or in sour
 
 ### Isolated Test Database
 - Tests run against `MONGODB_URI_TEST` if set, or fall back to an in-memory MongoDB server via `mongodb-memory-server`.
+- `connectTestDb` calls `ActivityModel.syncIndexes()` and `UserModel.syncIndexes()`. Performance tests call `syncIndexes` again after `insertMany`.
+- `calendar.reschedule` uses a Mongo transaction when the topology is a replica set, mongos, or load balancer (Atlas). Standalone test Mongo uses the same `updatedAt` optimistic lock without a transaction.
 - **Database Lifecycle:**
   - `beforeAll`: Connect to isolated test database.
   - `beforeEach`: Clear collections and re-seed deterministic dataset.
@@ -764,7 +801,7 @@ Do not put URI passwords, client secrets, or JWT secrets in this file or in sour
   4. *Dinner*: 8:30 PM (Daily, Priority 5)
   5. *Vitamin D*: 10:45 PM (Weekly, Priority 2)
 
-### Test Coverage Matrix (`20` Suites / `86` Tests)
+### Test Coverage Matrix (`22` Suites / `116` Tests)
 - `auth.test.ts`: Login success (JWT issued), invalid callback 401, missing JWT 401, expired JWT 401, invalid JWT 401, `/auth/me` profile, Google redirect, logout.
 - `protected.test.ts`: Every Calendar endpoint — valid JWT success, missing JWT 401, invalid JWT 401.
 - `create.test.ts`: Valid event creation, duration parsing, missing title rejection, invalid date validation, negative duration rejection, duplicate submission idempotency.
@@ -772,17 +809,19 @@ Do not put URI passwords, client secrets, or JWT secrets in this file or in sour
 - `update.test.ts`: Partial field updates while preserving unedited fields, empty payload rejection.
 - `delete.test.ts`: Deleting existing & non-existent activities (404).
 - `complete.test.ts`: Completing pending activities, idempotent status handling.
-- `reschedule.test.ts`: Rescheduling moveable activities, rejecting fixed activities (400 Bad Request), midnight date transitions.
+- `reschedule.test.ts`: Rescheduling moveable activities, rejecting fixed activities (400 Bad Request), midnight date transitions, null duration / null endAt.
 - `conflicts.test.ts`: Conflict detection in range, boundary touching, full containment, partial overlaps.
-- `suggest-slot.test.ts`: Largest free slot calculation and impossible duration handling.
-- `recurrence.test.ts`: Daily, weekly (ISO weekday array), monthly, and yearly recurrence rules.
+- `suggest-slot.test.ts`: Largest free slot calculation, impossible duration handling, unscheduled floating tasks reserved in slot planning.
+- `recurrence.test.ts`: Daily, weekly (ISO weekday array), monthly, and yearly rules stored; expansion inside list windows; `until`; no duplicate documents.
 - `reminders.test.ts`: Single, multiple, zero, and negative reminder offsets.
 - `priority.test.ts`: Priority range validation (1–5 accepted; 0, 6, negative rejected).
 - `timezone.test.ts`: Preservation of `Asia/Kolkata` timezone and UTC ISO conversion accuracy.
 - `status.test.ts`: Status lifecycle transitions (`pending` -> `done`, `cancelled`, `missed`).
 - `integrity.test.ts`: Timestamp preservation (`createdAt`), `updatedAt` updates, `userId` immutability.
-- `concurrency.test.ts`: Concurrent creations, updates, and delete-during-update.
-- `security.test.ts`: Invalid hex ID rejection, malformed JSON handling, unknown fields rejection, multi-tenant user isolation.
-- `performance.test.ts`: Smoke performance verification with 1,000 seeded activities.
-- `mcp.test.ts`: MCP tool discovery, execution with JWT `userId`, permissions, and security.
+- `concurrency.test.ts`: Concurrent creations, updates, delete-during-update, and parallel reschedule (200 or 409; one committed startAt).
+- `security.test.ts`: Invalid hex ID rejection, malformed JSON handling, unknown fields rejection, multi-tenant user isolation, production CORS allowlist.
+- `performance.test.ts`: Smoke performance verification with 1,000 seeded activities (day/week/month under 500 ms).
+- `mcp.test.ts`: MCP tool discovery, execution with JWT `userId`, permissions, security, and HTTP JWT isolation (User B cannot see User A's event; parallel requests isolated).
+- `mcp-auth.test.ts`: MCP HTTP `X-MCP-API-Key` (valid, missing, invalid); tools/call without Bearer JWT is `UNAUTHORIZED`.
+- `mcp-session.test.ts`: Streamable HTTP session id on initialize, transport reuse, missing/unknown session, DELETE cleanup, initialize capabilities (tools/resources/prompts), `CallTool` `isError: true` on failure.
 

@@ -56,10 +56,22 @@ describe("GET /activities - Read Tests", () => {
   it("should return an empty array for an Empty Day", async () => {
     const res = await request
       .get("/activities")
-      .query({ range: "day", date: "2026-09-15", timezone: TEST_TIMEZONE });
+      .query({ range: "day", date: "2026-09-08", timezone: TEST_TIMEZONE });
 
     expect(res.status).toBe(200);
     expect(res.body.activities).toEqual([]);
+  });
+
+  it("should include the expanded daily Dinner on the next day", async () => {
+    const res = await request
+      .get("/activities")
+      .query({ range: "day", date: "2026-09-10", timezone: TEST_TIMEZONE });
+
+    expect(res.status).toBe(200);
+    const dinners = res.body.activities.filter((a: { title: string }) => a.title === "Dinner");
+    expect(dinners).toHaveLength(1);
+    expect(dinners[0].startAt).toBe("2026-09-10T15:00:00.000Z");
+    expect(dinners[0].endAt).toBe("2026-09-10T16:00:00.000Z");
   });
 
   it("should fail validation on invalid date format", async () => {

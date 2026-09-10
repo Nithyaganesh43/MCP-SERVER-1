@@ -1,7 +1,8 @@
 import request from "supertest";
-import { getMcpTestApp, TEST_MCP_API_KEY, mcpHeaders } from "./helpers/mcpHttp";
+import { getMcpTestApp, TEST_MCP_API_KEY, mcpHeaders, parseMcpToolEnvelope } from "./helpers/mcpHttp";
 import { timingSafeCompare } from "../mcp/apiKeyAuth";
 import { ToolRegistry } from "../mcp/registry";
+import { TEST_JWT_SECRET } from "./helpers/auth";
 
 /**
  * MCP API Key Authentication & HTTP Endpoint Tests
@@ -17,8 +18,7 @@ describe("MCP API Key Authentication & HTTP Endpoints", () => {
   beforeEach(() => {
     ToolRegistry.getInstance().clearRegistry();
     process.env.MCP_API_KEY = TEST_MCP_API_KEY;
-    process.env.MCP_USER_ID = "68c0e0010000000000000001";
-    process.env.JWT_SECRET = "test-jwt-secret";
+    process.env.JWT_SECRET = TEST_JWT_SECRET;
   });
 
   afterEach(() => {
@@ -194,6 +194,55 @@ describe("MCP API Key Authentication & HTTP Endpoints", () => {
       } finally {
         console.warn = originalWarn;
       }
+    });
+  });
+
+  describe("HTTP tool JWT", () => {
+    const listPayload = {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: {
+        name: "calendar.list",
+        arguments: {
+          range: "day",
+          date: "2026-09-09",
+        },
+      },
+    };
+
+    it("should reject tools/call without Authorization Bearer JWT", async () => {
+      delete process.env.MCP_USER_ID;
+      delete process.env.RYTHAM_JWT;
+
+      const app = getMcpTestApp();
+      const init = await request(app)
+        .post("/mcp")
+        .set(mcpHeaders())
+        .send(initializePayload);
+
+      const sessionId = init.headers["mcp-session-id"] as string;
+      expect(sessionId).toBeTruthy();
+
+      const res = await request(app)
+        .post("/mcp")
+        .set({
+          ...mcpHeaders(),
+          "Mcp-Session-Id": sessionId,
+        })
+        .send(listPayload);
+
+      expect(res.status).not.toBe(401);
+      const envelope = parseMcpToolEnvelope(res);
+      expect(envelope.success).toBe(false);
+      expect(envelope.error?.code).toBe("UNAUTHORIZED");
+
+      await request(app)
+        .delete("/mcp")
+        .set({
+          ...mcpHeaders(),
+          "Mcp-Session-Id": sessionId,
+        });
     });
   });
 });

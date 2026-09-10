@@ -50,6 +50,7 @@ describe("Performance Smoke Tests", () => {
     }
 
     await ActivityModel.insertMany(docs);
+    await ActivityModel.syncIndexes();
   }, 30000);
 
   it("should respond quickly for Day View query with 1,000 seeded items", async () => {
@@ -82,6 +83,6 @@ describe("Performance Smoke Tests", () => {
     const duration = Date.now() - start;
 
     expect(res.status).toBe(200);
-    expect(duration).toBeLessThan(1000);
+    expect(duration).toBeLessThan(500);
   });
 });

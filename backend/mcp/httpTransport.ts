@@ -2,13 +2,22 @@ import express, { type Request, type Response } from "express";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js";
-import { createMcpServer } from "./server";
-import { createUserContext } from "./context";
+  createMcpServer,
+  MCP_CAPABILITIES,
+  wireMcpSdkHandlers,
+} from "./server";
+import {
+  createUserContextFromRequestAuthorization,
+  runWithRequestAuthorization,
+} from "./context";
 import { requireMcpApiKey } from "./apiKeyAuth";
 import { generateRequestId, logMcpRequest, startTimer } from "./logger";
+import {
+  generateSessionId,
+  isInitializeRequest,
+  McpSessionManager,
+  readSessionId,
+} from "./sessionManager";
 
 /**
  * Create an Express sub-app that serves MCP over Streamable HTTP.
@@ -16,8 +25,8 @@ import { generateRequestId, logMcpRequest, startTimer } from "./logger";
  * Mount this at `/mcp` on the main Express app:
  *   app.use("/mcp", createMcpHttpApp());
  *
- * The transport is stateless — each POST creates a new session.
- * API Key auth is enforced via the requireMcpApiKey middleware.
+ * Sessions are stateful: initialize issues `Mcp-Session-Id`; later POST/GET/DELETE
+ * reuse that transport. API Key auth is enforced via requireMcpApiKey.
  */
 export function createMcpHttpApp(): express.Express {
   const app = express();
@@ -25,28 +34,76 @@ export function createMcpHttpApp(): express.Express {
   app.use(requireMcpApiKey());
 
   const mcpServer = createMcpServer();
+  const sessions = new McpSessionManager();
 
-  // Handle MCP POST requests (JSON-RPC over HTTP)
-  app.post("/", async (req: Request, res: Response) => {
+  const handleMcp = async (req: Request, res: Response) => {
     const requestId = generateRequestId();
     const timer = startTimer();
+    const authorization =
+      typeof req.headers.authorization === "string"
+        ? req.headers.authorization
+        : undefined;
 
-    try {
-      const sdkServer = createSdkServer(mcpServer, requestId);
-      const transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: undefined, // stateless
-      });
+    await runWithRequestAuthorization(authorization, async () => {
+      try {
+      const sessionId = readSessionId(req);
+      const existing = sessionId ? sessions.get(sessionId) : undefined;
 
-      await sdkServer.connect(transport);
-      await transport.handleRequest(req, res, req.body);
-      await sdkServer.close();
+      if (existing) {
+        await existing.transport.handleRequest(req, res, req.body);
+        logMcpRequest({
+          requestId,
+          tool: extractToolName(req.body),
+          status: "success",
+          durationMs: timer.stop(),
+          timestamp: new Date().toISOString(),
+        });
+        return;
+      }
 
-      logMcpRequest({
-        requestId,
-        tool: extractToolName(req.body),
-        status: "success",
-        durationMs: timer.stop(),
-        timestamp: new Date().toISOString(),
+      if (!sessionId && isInitializeRequest(req.body)) {
+        const sdkServer = createSdkServer(mcpServer);
+        const transport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: generateSessionId,
+          onsessioninitialized: (id) => {
+            sessions.set(id, { transport, sdkServer });
+          },
+        });
+
+        transport.onclose = () => {
+          const id = transport.sessionId;
+          if (!id) {
+            return;
+          }
+          const session = sessions.drop(id);
+          void session?.sdkServer.close();
+        };
+
+        await sdkServer.connect(transport);
+        await transport.handleRequest(req, res, req.body);
+        logMcpRequest({
+          requestId,
+          tool: extractToolName(req.body),
+          status: "success",
+          durationMs: timer.stop(),
+          timestamp: new Date().toISOString(),
+        });
+        return;
+      }
+
+      if (sessionId) {
+        res.status(404).json({
+          jsonrpc: "2.0",
+          error: { code: -32001, message: "Session not found" },
+          id: null,
+        });
+        return;
+      }
+
+      res.status(400).json({
+        jsonrpc: "2.0",
+        error: { code: -32000, message: "Bad Request: Session ID required" },
+        id: null,
       });
     } catch (err) {
       logMcpRequest({
@@ -58,7 +115,6 @@ export function createMcpHttpApp(): express.Express {
         error: err instanceof Error ? err.message : "Unknown error",
       });
 
-      // Only send error response if headers haven't been sent
       if (!res.headersSent) {
         res.status(500).json({
           jsonrpc: "2.0",
@@ -66,36 +122,23 @@ export function createMcpHttpApp(): express.Express {
           id: null,
         });
       }
-    }
-  });
-
-  // Handle SSE GET requests for server-to-client notifications
-  app.get("/", async (req: Request, res: Response) => {
-    const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: undefined,
+      }
     });
-    const sdkServer = createSdkServer(mcpServer, generateRequestId());
-    await sdkServer.connect(transport);
-    await transport.handleRequest(req, res);
-  });
+  };
 
-  // Handle DELETE for session teardown (stateless, but still accept gracefully)
-  app.delete("/", async (req: Request, res: Response) => {
-    const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: undefined,
-    });
-    await transport.handleRequest(req, res);
-  });
+  app.post("/", handleMcp);
+  app.get("/", handleMcp);
+  app.delete("/", handleMcp);
 
   return app;
 }
 
 /**
  * Create an MCP SDK Server wired to our tool registry and context.
+ * One instance is kept for the life of a Streamable HTTP session.
  */
 function createSdkServer(
   mcpServer: ReturnType<typeof createMcpServer>,
-  requestId: string,
 ): Server {
   const sdkServer = new Server(
     {
@@ -103,53 +146,25 @@ function createSdkServer(
       version: "1.0.0",
     },
     {
-      capabilities: {
-        tools: {},
-      },
+      capabilities: MCP_CAPABILITIES,
     },
   );
 
-  sdkServer.setRequestHandler(ListToolsRequestSchema, async () => {
-    const { tools } = mcpServer.discoverTools();
-    return {
-      tools: tools.map((t) => ({
-        name: t.name,
-        description: t.description,
-        inputSchema: t.inputSchema as any,
-      })),
-    };
-  });
-
-  sdkServer.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const { name, arguments: args } = request.params;
-    const timer = startTimer();
-
-    // Resolve user context from MCP_USER_ID or RYTHAM_JWT
-    const ctx = createUserContext({
-      userId: process.env.MCP_USER_ID,
-      jwt: process.env.RYTHAM_JWT,
-    });
-
-    const result = await mcpServer.executeTool(name, args, ctx);
-
-    logMcpRequest({
-      requestId,
-      tool: name,
-      status: result.success ? "success" : "error",
-      durationMs: timer.stop(),
-      timestamp: new Date().toISOString(),
-      ...(result.success ? {} : { error: result.error.message }),
-    });
-
-    return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify(result, null, 2),
-        },
-      ],
-    };
-  });
+  wireMcpSdkHandlers(
+    sdkServer,
+    mcpServer,
+    () => createUserContextFromRequestAuthorization(),
+    (name, result, durationMs) => {
+      logMcpRequest({
+        requestId: generateRequestId(),
+        tool: name,
+        status: result.success ? "success" : "error",
+        durationMs,
+        timestamp: new Date().toISOString(),
+        ...(result.success ? {} : { error: result.error.message }),
+      });
+    },
+  );
 
   return sdkServer;
 }
@@ -161,7 +176,6 @@ function createSdkServer(
 function extractToolName(body: unknown): string | null {
   if (!body || typeof body !== "object") return null;
 
-  // Handle batched requests
   if (Array.isArray(body)) {
     const toolCall = body.find(
       (msg: any) => msg.method === "tools/call",

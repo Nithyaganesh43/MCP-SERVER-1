@@ -3,8 +3,16 @@ import { seedDatabase, TEST_USER_ID_HEX, SeededActivities } from "./helpers/seed
 import { createMcpServer, McpServer } from "../mcp/server";
 import { ToolRegistry } from "../mcp/registry";
 import { createUserContext } from "../mcp/context";
-import { TEST_JWT_SECRET, validJwt } from "./helpers/auth";
+import { TEST_JWT_SECRET, otherUserJwt, validJwt } from "./helpers/auth";
 import { UserContext } from "../mcp/manifest";
+import request from "supertest";
+import {
+  getMcpTestApp,
+  TEST_MCP_API_KEY,
+  mcpCallHeaders,
+  mcpInitializeSession,
+  parseMcpToolEnvelope,
+} from "./helpers/mcpHttp";
 
 describe("Rytham MCP Capability Layer (v1.0)", () => {
   let server: McpServer;
@@ -316,6 +324,123 @@ describe("Rytham MCP Capability Layer (v1.0)", () => {
         ctx,
       );
       expect(rescheduleRes.success).toBe(true);
+    });
+  });
+
+  describe("HTTP request-scoped JWT isolation", () => {
+    const createPayload = (id: number, title: string) => ({
+      jsonrpc: "2.0",
+      id,
+      method: "tools/call",
+      params: {
+        name: "calendar.create",
+        arguments: {
+          title,
+          schedule: {
+            startAt: "2026-09-09T15:00:00+05:30",
+            endAt: "2026-09-09T16:00:00+05:30",
+            durationMin: 60,
+            timezone: "Asia/Kolkata",
+          },
+          behavior: {
+            flexibility: "moveable",
+          },
+          priority: 4,
+        },
+      },
+    });
+
+    const listPayload = (id: number) => ({
+      jsonrpc: "2.0",
+      id,
+      method: "tools/call",
+      params: {
+        name: "calendar.list",
+        arguments: {
+          range: "day",
+          date: "2026-09-09",
+        },
+      },
+    });
+
+    beforeEach(() => {
+      ToolRegistry.getInstance().clearRegistry();
+      process.env.MCP_API_KEY = TEST_MCP_API_KEY;
+      process.env.MCP_USER_ID = TEST_USER_ID_HEX;
+      process.env.RYTHAM_JWT = validJwt();
+    });
+
+    it("User B cannot see an event created by User A", async () => {
+      const app = getMcpTestApp();
+      const jwtA = validJwt();
+      const jwtB = otherUserJwt();
+      const sessionA = await mcpInitializeSession(app, jwtA);
+      const sessionB = await mcpInitializeSession(app, jwtB);
+
+      const createRes = await request(app)
+        .post("/mcp")
+        .set(mcpCallHeaders(sessionA, jwtA))
+        .send(createPayload(1, "User A private event"));
+
+      const created = parseMcpToolEnvelope(createRes);
+      expect(created.success).toBe(true);
+
+      const listB = await request(app)
+        .post("/mcp")
+        .set(mcpCallHeaders(sessionB, jwtB))
+        .send(listPayload(2));
+
+      const listed = parseMcpToolEnvelope(listB);
+      expect(listed.success).toBe(true);
+      const activities = (listed.data as { activities: { title: string }[] }).activities;
+      expect(activities.map((a) => a.title)).not.toContain("User A private event");
+    });
+
+    it("keeps parallel requests isolated by JWT", async () => {
+      const app = getMcpTestApp();
+      const jwtA = validJwt();
+      const jwtB = otherUserJwt();
+      const [sessionA, sessionB] = await Promise.all([
+        mcpInitializeSession(app, jwtA),
+        mcpInitializeSession(app, jwtB),
+      ]);
+
+      const [createA, createB] = await Promise.all([
+        request(app)
+          .post("/mcp")
+          .set(mcpCallHeaders(sessionA, jwtA))
+          .send(createPayload(1, "Parallel A")),
+        request(app)
+          .post("/mcp")
+          .set(mcpCallHeaders(sessionB, jwtB))
+          .send(createPayload(2, "Parallel B")),
+      ]);
+
+      expect(parseMcpToolEnvelope(createA).success).toBe(true);
+      expect(parseMcpToolEnvelope(createB).success).toBe(true);
+
+      const [listA, listB] = await Promise.all([
+        request(app)
+          .post("/mcp")
+          .set(mcpCallHeaders(sessionA, jwtA))
+          .send(listPayload(3)),
+        request(app)
+          .post("/mcp")
+          .set(mcpCallHeaders(sessionB, jwtB))
+          .send(listPayload(4)),
+      ]);
+
+      const titlesA = (
+        parseMcpToolEnvelope(listA).data as { activities: { title: string }[] }
+      ).activities.map((a) => a.title);
+      const titlesB = (
+        parseMcpToolEnvelope(listB).data as { activities: { title: string }[] }
+      ).activities.map((a) => a.title);
+
+      expect(titlesA).toContain("Parallel A");
+      expect(titlesA).not.toContain("Parallel B");
+      expect(titlesB).toContain("Parallel B");
+      expect(titlesB).not.toContain("Parallel A");
     });
   });
 });

@@ -2,7 +2,12 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   CallToolRequestSchema,
+  GetPromptRequestSchema,
+  ListPromptsRequestSchema,
+  ListResourceTemplatesRequestSchema,
+  ListResourcesRequestSchema,
   ListToolsRequestSchema,
+  ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import path from "node:path";
 import dotenv from "dotenv";
@@ -12,6 +17,7 @@ import { handleMcpError } from "./errors";
 import { registerCalendarModule } from "./modules/calendar";
 import { ToolRegistry } from "./registry";
 import { executeToolCall } from "./transport";
+import { startTimer } from "./logger";
 import { ToolManifest, ToolResponseEnvelope, UserContext } from "./manifest";
 
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
@@ -60,6 +66,90 @@ export function createMcpServer(): McpServer {
   return server;
 }
 
+export const MCP_CAPABILITIES = {
+  tools: {},
+  resources: {},
+  prompts: {},
+};
+
+function toolCallPayload(result: ToolResponseEnvelope): {
+  content: { type: "text"; text: string }[];
+  isError?: true;
+} {
+  const payload: {
+    content: { type: "text"; text: string }[];
+    isError?: true;
+  } = {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify(result, null, 2),
+      },
+    ],
+  };
+  if (!result.success) {
+    payload.isError = true;
+  }
+  return payload;
+}
+
+export function wireMcpSdkHandlers(
+  sdkServer: Server,
+  mcpServer: McpServer,
+  getContext: () => UserContext,
+  afterTool?: (
+    name: string,
+    result: ToolResponseEnvelope,
+    durationMs: number,
+  ) => void,
+): void {
+  sdkServer.setRequestHandler(ListToolsRequestSchema, async () => {
+    const { tools } = mcpServer.discoverTools();
+    return {
+      tools: tools.map((t) => ({
+        name: t.name,
+        description: t.description,
+        inputSchema: t.inputSchema as Record<string, unknown>,
+      })),
+    };
+  });
+
+  sdkServer.setRequestHandler(ListResourcesRequestSchema, async () => ({
+    resources: [],
+  }));
+
+  sdkServer.setRequestHandler(ListResourceTemplatesRequestSchema, async () => ({
+    resourceTemplates: [],
+  }));
+
+  sdkServer.setRequestHandler(ReadResourceRequestSchema, async () => ({
+    contents: [],
+  }));
+
+  sdkServer.setRequestHandler(ListPromptsRequestSchema, async () => ({
+    prompts: [],
+  }));
+
+  sdkServer.setRequestHandler(GetPromptRequestSchema, async () => ({
+    messages: [],
+  }));
+
+  sdkServer.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const { name, arguments: args } = request.params;
+    const timer = startTimer();
+    try {
+      const ctx = getContext();
+      const result = await mcpServer.executeTool(name, args, ctx);
+      afterTool?.(name, result, timer.stop());
+      return toolCallPayload(result);
+    } catch (err) {
+      const result = handleMcpError(err);
+      afterTool?.(name, result, timer.stop());
+      return toolCallPayload(result);
+    }
+  });
+}
+
 export async function runStdioServer(): Promise<void> {
   if (process.env.MONGODB_URI) {
     try {
@@ -77,49 +167,13 @@ export async function runStdioServer(): Promise<void> {
       version: "1.0.0",
     },
     {
-      capabilities: {
-        tools: {},
-      },
+      capabilities: MCP_CAPABILITIES,
     },
   );
 
-  sdkServer.setRequestHandler(ListToolsRequestSchema, async () => {
-    const { tools } = mcpServer.discoverTools();
-    return {
-      tools: tools.map((t) => ({
-        name: t.name,
-        description: t.description,
-        inputSchema: t.inputSchema as any,
-      })),
-    };
-  });
-
-  sdkServer.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const { name, arguments: args } = request.params;
-    try {
-      const ctx = createUserContext({ jwt: process.env.RYTHAM_JWT });
-      const result = await mcpServer.executeTool(name, args, ctx);
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
-    } catch (err) {
-      const result = handleMcpError(err);
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-        isError: true,
-      };
-    }
-  });
+  wireMcpSdkHandlers(sdkServer, mcpServer, () =>
+    createUserContext({ jwt: process.env.RYTHAM_JWT }),
+  );
 
   const transport = new StdioServerTransport();
   await sdkServer.connect(transport);

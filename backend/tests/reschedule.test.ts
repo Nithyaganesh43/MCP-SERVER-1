@@ -50,6 +50,36 @@ describe("POST /activities/:id/reschedule - Reschedule Tests", () => {
     expect(res.body.success).toBe(false);
   });
 
+  it("should keep newEndAt null when durationMin and endAt are null", async () => {
+    const created = await request.post("/activities").send({
+      title: "Inbox task",
+      schedule: {
+        timezone: "Asia/Kolkata",
+        startAt: "2026-09-09T09:00:00+05:30",
+        durationMin: null,
+        endAt: null,
+      },
+      behavior: { flexibility: "moveable" },
+      priority: 3,
+    });
+    expect(created.status).toBe(201);
+    const activityId = created.body.activityId as string;
+    const newStart = "2026-09-09T15:00:00+05:30";
+
+    const res = await request.post(`/activities/${activityId}/reschedule`).send({
+      newStartAt: newStart,
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.newEndAt).toBeNull();
+
+    const doc = await ActivityModel.findById(activityId);
+    expect(doc?.schedule.startAt?.toISOString()).toBe(new Date(newStart).toISOString());
+    expect(doc?.schedule.endAt).toBeNull();
+    expect(doc?.schedule.durationMin).toBeNull();
+  });
+
   it("should handle rescheduling across midnight accurately", async () => {
     const gymId = seeded.gym._id.toString();
     const lateStart = "2026-09-09T23:30:00+05:30";

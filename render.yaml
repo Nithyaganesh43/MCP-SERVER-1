@@ -19,8 +19,6 @@ services:
         sync: false
       - key: MCP_API_KEY
         sync: false
-      - key: MCP_USER_ID
-        sync: false
       - key: TIMEZONE
         value: Asia/Kolkata
       - key: GOOGLE_CLIENT_ID

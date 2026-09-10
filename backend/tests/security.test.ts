@@ -1,6 +1,14 @@
+import supertest from "supertest";
 import { connectTestDb, closeTestDb, clearTestDb } from "./helpers/db";
 import { getTestApp, authedRequest } from "./helpers/app";
+import { createApp } from "../calendar/http";
 import { ActivityModel } from "../model/index";
+import {
+  TEST_GOOGLE_CALLBACK_URL,
+  TEST_GOOGLE_CLIENT_ID,
+  TEST_GOOGLE_CLIENT_SECRET,
+  TEST_JWT_SECRET,
+} from "./helpers/auth";
 import { OTHER_USER_ID, TEST_TIMEZONE } from "./helpers/seed";
 
 const app = getTestApp();
@@ -84,5 +92,39 @@ describe("Security & Validation Tests", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.activities).toEqual([]);
+  });
+
+  it("should allow only configured origins, methods, and no credentials in production CORS", async () => {
+    const allowed = "https://app.example.com";
+    const prodApp = createApp({
+      mongoUri: process.env.MONGODB_URI_TEST ?? "mongodb://localhost:27017/test",
+      port: 3000,
+      timezone: TEST_TIMEZONE,
+      googleClientId: TEST_GOOGLE_CLIENT_ID,
+      googleClientSecret: TEST_GOOGLE_CLIENT_SECRET,
+      googleCallbackUrl: TEST_GOOGLE_CALLBACK_URL,
+      jwtSecret: TEST_JWT_SECRET,
+      jwtExpiresIn: "7d",
+      nodeEnv: "production",
+      corsOrigins: [allowed],
+    });
+
+    const allowedRes = await supertest(prodApp)
+      .options("/health")
+      .set("Origin", allowed)
+      .set("Access-Control-Request-Method", "GET");
+    expect(allowedRes.status).toBe(204);
+    expect(allowedRes.headers["access-control-allow-origin"]).toBe(allowed);
+    expect(allowedRes.headers["access-control-allow-credentials"]).toBe("false");
+    expect(allowedRes.headers["access-control-allow-methods"]).toBe(
+      "GET,POST,PATCH,DELETE,OPTIONS",
+    );
+
+    const deniedRes = await supertest(prodApp)
+      .options("/health")
+      .set("Origin", "https://evil.example")
+      .set("Access-Control-Request-Method", "GET");
+    expect(deniedRes.status).toBe(204);
+    expect(deniedRes.headers["access-control-allow-origin"]).toBeUndefined();
   });
 });

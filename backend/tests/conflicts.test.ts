@@ -65,4 +65,16 @@ describe("POST /calendar/conflicts - Conflict Detection Tests", () => {
     const titles = res.body.conflicts.map((c: { title: string }) => c.title);
     expect(titles).toContain("Dell Meeting");
   });
+
+  it("should detect a conflict against an expanded recurring instance", async () => {
+    const res = await request.post("/calendar/conflicts").send({
+      startAt: "2026-09-10T20:00:00+05:30",
+      endAt: "2026-09-10T21:00:00+05:30",
+    });
+
+    expect(res.status).toBe(200);
+    const titles = res.body.conflicts.map((c: { title: string }) => c.title);
+    expect(titles).toContain("Dinner");
+    expect(titles.filter((title: string) => title === "Dinner")).toHaveLength(1);
+  });
 });

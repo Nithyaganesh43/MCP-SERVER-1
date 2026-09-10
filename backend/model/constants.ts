@@ -73,4 +73,5 @@ export const INDEXES = [
   { userId: 1, "schedule.startAt": 1 },
   { userId: 1, status: 1 },
   { userId: 1, priority: -1 },
+  { userId: 1, status: 1, "schedule.startAt": 1 },
 ] as const;

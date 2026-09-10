@@ -1,4 +1,4 @@
-import { Types } from "mongoose";
+import mongoose, { Types, type ClientSession } from "mongoose";
 import { HttpError } from "../errors";
 import {
   ActivityModel,
@@ -24,12 +24,17 @@ import type {
 } from "./contract";
 import { toIso } from "./contract";
 import {
+  instancesOverlappingWindow,
+  instancesStartingInWindow,
+  type RecurrenceInstance,
+} from "./recurrence";
+import {
   MS_PER_MIN,
   dayBounds,
   largestSlot,
   monthBounds,
   occupancy,
-  overlaps,
+  reserveFloatingGaps,
   weekBounds,
   formatHm,
   type Occupied,
@@ -39,14 +44,19 @@ function iso(value: Date | null | undefined): string | null {
   return toIso(value ?? null);
 }
 
-export function toView(activity: Activity): CalendarActivityView {
+export function toView(
+  activity: Activity,
+  instance?: RecurrenceInstance,
+): CalendarActivityView {
+  const startAt = instance ? instance.startAt : activity.schedule.startAt;
+  const endAt = instance ? instance.endAt : activity.schedule.endAt;
   return {
     activityId: String(activity._id),
     title: activity.title,
     note: activity.note,
     category: activity.category,
-    startAt: iso(activity.schedule.startAt),
-    endAt: iso(activity.schedule.endAt),
+    startAt: iso(startAt),
+    endAt: iso(endAt),
     durationMin: activity.schedule.durationMin,
     timezone: activity.schedule.timezone,
     flexibility: activity.behavior.flexibility,
@@ -69,6 +79,11 @@ export function toView(activity: Activity): CalendarActivityView {
 
 function objectId(activityId: string): Types.ObjectId {
   return new Types.ObjectId(activityId);
+}
+
+function supportsTransactions(): boolean {
+  const options = mongoose.connection.getClient().options;
+  return Boolean(options.replicaSet || options.srvHost);
 }
 
 export class CalendarService {
@@ -148,11 +163,30 @@ export class CalendarService {
     const bounds = this.listBounds(input);
     const docs = await ActivityModel.find({
       userId: this.userId,
-      "schedule.startAt": { $gte: bounds.start, $lt: bounds.end },
-    })
-      .sort({ "schedule.startAt": 1 })
-      .lean<Activity[]>();
-    return { activities: docs.map(toView) };
+      $or: [
+        { "schedule.startAt": { $gte: bounds.start, $lt: bounds.end } },
+        {
+          "behavior.recurrence.rule": { $in: ["daily", "weekly", "monthly", "yearly"] },
+          "schedule.startAt": { $ne: null, $lt: bounds.end },
+          $or: [
+            { "behavior.recurrence.until": null },
+            { "behavior.recurrence.until": { $gte: bounds.start } },
+          ],
+        },
+      ],
+    }).lean<Activity[]>();
+    const activities: CalendarActivityView[] = [];
+    for (const doc of docs) {
+      for (const instance of instancesStartingInWindow(doc, bounds)) {
+        activities.push(toView(doc, instance));
+      }
+    }
+    activities.sort((a, b) => {
+      const left = a.startAt ?? "";
+      const right = b.startAt ?? "";
+      return left.localeCompare(right);
+    });
+    return { activities };
   }
 
   async complete(input: CalendarCompleteInput): Promise<{ status: "done" }> {
@@ -171,10 +205,31 @@ export class CalendarService {
     success: true;
     newEndAt: string | null;
   }> {
+    if (!supportsTransactions()) {
+      return this.applyReschedule(input);
+    }
+    const session = await mongoose.startSession();
+    try {
+      const result = await session.withTransaction(() =>
+        this.applyReschedule(input, session),
+      );
+      return result;
+    } finally {
+      await session.endSession();
+    }
+  }
+
+  private async applyReschedule(
+    input: CalendarRescheduleInput,
+    session?: ClientSession,
+  ): Promise<{
+    success: true;
+    newEndAt: string | null;
+  }> {
     const current = await ActivityModel.findOne({
       _id: objectId(input.activityId),
       userId: this.userId,
-    });
+    }).session(session ?? null);
     if (!current) {
       throw new HttpError(404, "Activity not found");
     }
@@ -191,13 +246,24 @@ export class CalendarService {
       const span = previousEnd.getTime() - previousStart.getTime();
       newEndAt = new Date(input.newStartAt.getTime() + span);
     } else {
-      newEndAt = previousEnd;
+      newEndAt = null;
     }
-    current.schedule.startAt = input.newStartAt;
-    if (newEndAt) {
-      current.schedule.endAt = newEndAt;
+    const $set: { "schedule.startAt": Date; "schedule.endAt": Date | null } = {
+      "schedule.startAt": input.newStartAt,
+      "schedule.endAt": newEndAt,
+    };
+    const updated = await ActivityModel.findOneAndUpdate(
+      {
+        _id: objectId(input.activityId),
+        userId: this.userId,
+        updatedAt: current.updatedAt,
+      },
+      { $set },
+      { new: true, runValidators: true, session: session ?? null },
+    );
+    if (!updated) {
+      throw new HttpError(409, "Activity was modified; retry reschedule");
     }
-    await current.save();
     return { success: true, newEndAt: iso(newEndAt) };
   }
 
@@ -212,12 +278,7 @@ export class CalendarService {
     }).lean<Activity[]>();
     const conflicts: CalendarConflictView[] = [];
     for (const doc of docs) {
-      const slot = occupancy(
-        doc.schedule.startAt,
-        doc.schedule.endAt,
-        doc.schedule.durationMin,
-      );
-      if (!slot || !overlaps(slot, window)) {
+      if (instancesOverlappingWindow(doc, window).length === 0) {
         continue;
       }
       conflicts.push({
@@ -239,21 +300,54 @@ export class CalendarService {
     const docs = await ActivityModel.find({
       userId: this.userId,
       status: "pending",
-      "schedule.startAt": { $ne: null, $lt: bounds.end },
+      $or: [
+        { "schedule.startAt": { $ne: null, $lt: bounds.end } },
+        {
+          "behavior.flexibility": "floating",
+          "schedule.startAt": null,
+        },
+      ],
     }).lean<Activity[]>();
     const busy: Occupied[] = [];
+    const floaters: { title: string; durationMin: number; priority: number }[] =
+      [];
     for (const doc of docs) {
-      const slot = occupancy(
-        doc.schedule.startAt,
-        doc.schedule.endAt,
-        doc.schedule.durationMin,
-      );
-      if (!slot || !overlaps(slot, bounds)) {
+      if (
+        doc.behavior.flexibility === "floating" &&
+        !doc.schedule.startAt &&
+        doc.schedule.durationMin != null
+      ) {
+        floaters.push({
+          title: doc.title,
+          durationMin: doc.schedule.durationMin,
+          priority: doc.priority,
+        });
         continue;
       }
-      busy.push({ start: slot.start, end: slot.end, title: doc.title });
+      for (const instance of instancesOverlappingWindow(doc, bounds)) {
+        const slot = occupancy(
+          instance.startAt,
+          instance.endAt,
+          doc.schedule.durationMin,
+        );
+        if (!slot) {
+          continue;
+        }
+        busy.push({ start: slot.start, end: slot.end, title: doc.title });
+      }
     }
-    const found = largestSlot(bounds.start, bounds.end, busy, input.durationMin);
+    const reserved = reserveFloatingGaps(
+      bounds.start,
+      bounds.end,
+      busy,
+      floaters,
+    );
+    const found = largestSlot(
+      bounds.start,
+      bounds.end,
+      [...busy, ...reserved],
+      input.durationMin,
+    );
     if (!found) {
       return {
         suggestedStart: null,

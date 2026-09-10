@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
 import { signJwt } from "../../auth/jwt";
-import { TEST_GOOGLE_PROFILE, TEST_USER_ID_HEX } from "./seed";
+import { OTHER_USER_ID_HEX, TEST_GOOGLE_PROFILE, TEST_USER_ID_HEX } from "./seed";
 
 export const TEST_JWT_SECRET = "test-jwt-secret-rytham-v1-auth-lock";
 export const TEST_GOOGLE_CLIENT_ID = "test-google-client-id";
@@ -37,4 +37,16 @@ export function invalidJwt(): string {
 
 export function authHeader(token = validJwt()): { Authorization: string } {
   return { Authorization: `Bearer ${token}` };
+}
+
+export function otherUserJwt(): string {
+  return signJwt(
+    {
+      sub: OTHER_USER_ID_HEX,
+      email: "user_test_002@gmail.com",
+      name: "Other User",
+    },
+    TEST_JWT_SECRET,
+    "7d",
+  );
 }

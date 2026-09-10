@@ -92,6 +92,74 @@ export function addMonthsYmd(ymd: string, months: number): string {
   return utc.toISOString().slice(0, 10);
 }
 
+export function addMonthsKeepDay(ymd: string, months: number): string | null {
+  const match = YMD.exec(ymd);
+  if (!match) {
+    throw new HttpError(400, `Invalid date: ${ymd}`);
+  }
+  const day = Number(match[3]);
+  const utc = new Date(
+    Date.UTC(Number(match[1]), Number(match[2]) - 1 + months, day),
+  );
+  if (utc.getUTCDate() !== day) {
+    return null;
+  }
+  return utc.toISOString().slice(0, 10);
+}
+
+export function daysBetweenYmd(from: string, to: string): number {
+  const a = YMD.exec(from);
+  const b = YMD.exec(to);
+  if (!a || !b) {
+    throw new HttpError(400, `Invalid date: ${!a ? from : to}`);
+  }
+  const fromUtc = Date.UTC(Number(a[1]), Number(a[2]) - 1, Number(a[3]));
+  const toUtc = Date.UTC(Number(b[1]), Number(b[2]) - 1, Number(b[3]));
+  return Math.round((toUtc - fromUtc) / 86_400_000);
+}
+
+export function monthsBetweenYmd(from: string, to: string): number {
+  const a = YMD.exec(from);
+  const b = YMD.exec(to);
+  if (!a || !b) {
+    throw new HttpError(400, `Invalid date: ${!a ? from : to}`);
+  }
+  return (Number(b[1]) - Number(a[1])) * 12 + (Number(b[2]) - Number(a[2]));
+}
+
+export function zonedYmd(date: Date, timeZone: string): string {
+  assertTimeZone(timeZone);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const year = parts.find((part) => part.type === "year")?.value ?? "0000";
+  const month = parts.find((part) => part.type === "month")?.value ?? "01";
+  const day = parts.find((part) => part.type === "day")?.value ?? "01";
+  return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+}
+
+export function zonedHms(date: Date, timeZone: string): string {
+  assertTimeZone(timeZone);
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    hourCycle: "h23",
+  }).formatToParts(date);
+  let hour = parts.find((part) => part.type === "hour")?.value ?? "00";
+  const minute = parts.find((part) => part.type === "minute")?.value ?? "00";
+  const second = parts.find((part) => part.type === "second")?.value ?? "00";
+  if (hour === "24") {
+    hour = "00";
+  }
+  return `${hour.padStart(2, "0")}:${minute.padStart(2, "0")}:${second.padStart(2, "0")}`;
+}
+
 export type RangeBounds = { start: Date; end: Date };
 
 export function dayBounds(ymd: string, timeZone: string): RangeBounds {
@@ -224,4 +292,49 @@ export function largestSlot(
     end: new Date(best.start.getTime() + need),
     nextTitle: best.nextTitle,
   };
+}
+
+export type FloatingReserve = {
+  title: string;
+  durationMin: number;
+  priority: number;
+};
+
+/**
+ * Place unscheduled floating tasks into free gaps (higher priority first).
+ * Occupied blocks are returned so suggest_slot can plan around them.
+ */
+export function reserveFloatingGaps(
+  dayStart: Date,
+  dayEnd: Date,
+  busy: Occupied[],
+  floaters: FloatingReserve[],
+): Occupied[] {
+  const reserved: Occupied[] = [];
+  const ordered = [...floaters].sort((a, b) => {
+    if (b.priority !== a.priority) {
+      return b.priority - a.priority;
+    }
+    return a.title.localeCompare(b.title);
+  });
+  for (const floater of ordered) {
+    if (floater.durationMin <= 0) {
+      continue;
+    }
+    const placed = largestSlot(
+      dayStart,
+      dayEnd,
+      [...busy, ...reserved],
+      floater.durationMin,
+    );
+    if (!placed) {
+      continue;
+    }
+    reserved.push({
+      start: placed.start,
+      end: placed.end,
+      title: floater.title,
+    });
+  }
+  return reserved;
 }

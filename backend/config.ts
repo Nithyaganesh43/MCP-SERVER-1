@@ -10,6 +10,17 @@ function required(name: string): string {
   return value;
 }
 
+function parseCorsOrigins(raw: string | undefined, nodeEnv: string): string[] {
+  const list = (raw ?? "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+  if (nodeEnv === "production" && list.length === 0) {
+    throw new Error("Missing environment variable CORS_ORIGINS");
+  }
+  return list;
+}
+
 export type Config = {
   mongoUri: string;
   port: number;
@@ -20,8 +31,8 @@ export type Config = {
   jwtSecret: string;
   jwtExpiresIn: string;
   nodeEnv: string;
+  corsOrigins: string[];
   mcpApiKey?: string;
-  mcpUserId?: string;
 };
 
 export function loadConfig(): Config {
@@ -37,7 +48,7 @@ export function loadConfig(): Config {
     jwtSecret: required("JWT_SECRET"),
     jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? "7d",
     nodeEnv,
+    corsOrigins: parseCorsOrigins(process.env.CORS_ORIGINS, nodeEnv),
     mcpApiKey: process.env.MCP_API_KEY,
-    mcpUserId: process.env.MCP_USER_ID,
   };
 }
