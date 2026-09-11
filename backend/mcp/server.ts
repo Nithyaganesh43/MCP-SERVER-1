@@ -15,6 +15,10 @@ import { connectDb } from "../db";
 import { createUserContext, CreateContextOptions } from "./context";
 import { handleMcpError } from "./errors";
 import { registerCalendarModule } from "./modules/calendar";
+import { registerCalendarIntelligenceModule } from "./modules/calendar-intelligence";
+import { registerMemoryModule } from "./modules/memory";
+import { registerReflectionModule } from "./modules/reflection";
+import { registerConversationModule } from "./modules/conversation";
 import { ToolRegistry } from "./registry";
 import { executeToolCall } from "./transport";
 import { startTimer } from "./logger";
@@ -63,6 +67,10 @@ export class McpServer {
 export function createMcpServer(): McpServer {
   const server = new McpServer();
   server.registerModule(registerCalendarModule);
+  server.registerModule(registerCalendarIntelligenceModule);
+  server.registerModule(registerMemoryModule);
+  server.registerModule(registerReflectionModule);
+  server.registerModule(registerConversationModule);
   return server;
 }
 

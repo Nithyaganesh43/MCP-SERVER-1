@@ -16,8 +16,14 @@ import {
   parseDeleteInput,
   parseListInput,
   parseRescheduleInput,
+  parseRescueMissedInput,
+  parseRolloverInput,
+  parseSplitTaskInput,
   parseSuggestInput,
+  parseUndoInput,
   parseUpdateInput,
+  parseUserPreferencesInput,
+  parseWeeklySummaryInput,
   queryRecord,
 } from "./contract";
 import { CalendarService } from "./service";
@@ -161,6 +167,70 @@ export function createApp(config: Config): express.Express {
     wrap(async (req, res) => {
       const result = await calendarFor(req).suggestSlot(
         parseSuggestInput(req.body, config.timezone),
+      );
+      res.json(result);
+    }),
+  );
+
+  app.post(
+    "/calendar/undo",
+    auth,
+    wrap(async (req, res) => {
+      const result = await calendarFor(req).undo(parseUndoInput(req.body));
+      res.json(result);
+    }),
+  );
+
+  app.post(
+    "/calendar/user-preferences",
+    auth,
+    wrap(async (req, res) => {
+      const result = await calendarFor(req).userPreferences(
+        parseUserPreferencesInput(req.body),
+      );
+      res.json(result);
+    }),
+  );
+
+  app.post(
+    "/calendar/split-task",
+    auth,
+    wrap(async (req, res) => {
+      const result = await calendarFor(req).splitTask(
+        parseSplitTaskInput(req.body, config.timezone),
+      );
+      res.json(result);
+    }),
+  );
+
+  app.post(
+    "/calendar/rescue-missed",
+    auth,
+    wrap(async (req, res) => {
+      const result = await calendarFor(req).rescueMissed(
+        parseRescueMissedInput(req.body, config.timezone),
+      );
+      res.json(result);
+    }),
+  );
+
+  app.post(
+    "/calendar/rollover",
+    auth,
+    wrap(async (req, res) => {
+      const result = await calendarFor(req).rollover(
+        parseRolloverInput(req.body, config.timezone),
+      );
+      res.json(result);
+    }),
+  );
+
+  app.post(
+    "/calendar/weekly-summary",
+    auth,
+    wrap(async (req, res) => {
+      const result = await calendarFor(req).weeklySummary(
+        parseWeeklySummaryInput(req.body, config.timezone),
       );
       res.json(result);
     }),

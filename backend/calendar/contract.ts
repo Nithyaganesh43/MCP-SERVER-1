@@ -22,6 +22,12 @@ export const CALENDAR_TOOLS = [
   "calendar.reschedule",
   "calendar.conflicts",
   "calendar.suggest_slot",
+  "calendar.undo",
+  "calendar.user_preferences",
+  "calendar.split_task",
+  "calendar.rescue_missed",
+  "calendar.rollover",
+  "calendar.weekly_summary",
 ] as const;
 
 export type CalendarTool = (typeof CALENDAR_TOOLS)[number];
@@ -38,6 +44,12 @@ export const REST_TO_TOOL = {
   "POST /activities/:id/reschedule": "calendar.reschedule",
   "POST /calendar/conflicts": "calendar.conflicts",
   "POST /calendar/suggest-slot": "calendar.suggest_slot",
+  "POST /calendar/undo": "calendar.undo",
+  "POST /calendar/user-preferences": "calendar.user_preferences",
+  "POST /calendar/split-task": "calendar.split_task",
+  "POST /calendar/rescue-missed": "calendar.rescue_missed",
+  "POST /calendar/rollover": "calendar.rollover",
+  "POST /calendar/weekly-summary": "calendar.weekly_summary",
 } as const;
 
 const CREATE_KEYS = [
@@ -74,6 +86,8 @@ export const ALLOWED_UPDATE_PATHS = [
   "schedule.startAt",
   "schedule.endAt",
   "schedule.durationMin",
+  "schedule.bufferBeforeMin",
+  "schedule.bufferAfterMin",
   "schedule.timezone",
   "behavior.flexibility",
   "behavior.recurrence.rule",
@@ -101,6 +115,8 @@ export type CalendarCreateInput = {
     startAt?: Date | null;
     endAt?: Date | null;
     durationMin?: number | null;
+    bufferBeforeMin?: number | null;
+    bufferAfterMin?: number | null;
     timezone: string;
   };
   behavior: {
@@ -150,6 +166,45 @@ export type CalendarSuggestInput = {
   timezone: string;
 };
 
+export type CalendarUndoInput = Record<string, never>;
+
+/** Compatibility blob for calendar.user_preferences. Canonical store is scheduling_preferences. */
+export type CalendarUserPreferencesBlob = {
+  quietHours?: { startHour: number; endHour: number };
+  bestLearningWindow?: { startHour: number; endHour: number };
+  focusDurationMin?: number;
+  maxDailyHighPriorityTasks?: number;
+};
+
+export type CalendarUserPreferencesInput = {
+  action: "get" | "update";
+  preferences?: CalendarUserPreferencesBlob;
+};
+
+export type CalendarSplitTaskInput = {
+  title: string;
+  totalDurationMin: number;
+  maxChunkMin?: number;
+  date?: string;
+  timezone: string;
+};
+
+export type CalendarRescueMissedInput = {
+  autoReschedule?: boolean;
+  date?: string;
+  timezone: string;
+};
+
+export type CalendarRolloverInput = {
+  targetDate?: string;
+  timezone: string;
+};
+
+export type CalendarWeeklySummaryInput = {
+  date?: string;
+  timezone: string;
+};
+
 export type CalendarActivityView = {
   activityId: string;
   title: string;
@@ -158,6 +213,8 @@ export type CalendarActivityView = {
   startAt: string | null;
   endAt: string | null;
   durationMin: number | null;
+  bufferBeforeMin: number | null;
+  bufferAfterMin: number | null;
   timezone: string;
   flexibility: Flexibility;
   recurrence: {
@@ -303,12 +360,29 @@ export function parseCreateInput(body: unknown): CalendarCreateInput {
   if (!isRecord(body.schedule)) {
     throw new HttpError(400, "schedule is required");
   }
-  rejectUnknown(body.schedule, ["startAt", "endAt", "durationMin", "timezone"]);
+  rejectUnknown(body.schedule, [
+    "startAt",
+    "endAt",
+    "durationMin",
+    "bufferBeforeMin",
+    "bufferAfterMin",
+    "timezone",
+  ]);
   const timezone = requireString(body.schedule, "timezone");
   assertTimeZone(timezone);
   if (body.schedule.durationMin !== undefined && body.schedule.durationMin !== null) {
     if (typeof body.schedule.durationMin !== "number" || body.schedule.durationMin < 0) {
       throw new HttpError(400, "schedule.durationMin must be >= 0");
+    }
+  }
+  if (body.schedule.bufferBeforeMin !== undefined && body.schedule.bufferBeforeMin !== null) {
+    if (typeof body.schedule.bufferBeforeMin !== "number" || body.schedule.bufferBeforeMin < 0) {
+      throw new HttpError(400, "schedule.bufferBeforeMin must be >= 0");
+    }
+  }
+  if (body.schedule.bufferAfterMin !== undefined && body.schedule.bufferAfterMin !== null) {
+    if (typeof body.schedule.bufferAfterMin !== "number" || body.schedule.bufferAfterMin < 0) {
+      throw new HttpError(400, "schedule.bufferAfterMin must be >= 0");
     }
   }
   if (!isRecord(body.behavior)) {
@@ -371,6 +445,14 @@ export function parseCreateInput(body: unknown): CalendarCreateInput {
         body.schedule.durationMin === undefined
           ? undefined
           : (body.schedule.durationMin as number | null),
+      bufferBeforeMin:
+        body.schedule.bufferBeforeMin === undefined
+          ? undefined
+          : (body.schedule.bufferBeforeMin as number | null),
+      bufferAfterMin:
+        body.schedule.bufferAfterMin === undefined
+          ? undefined
+          : (body.schedule.bufferAfterMin as number | null),
       timezone,
     },
     behavior: { flexibility, recurrence },
@@ -395,6 +477,16 @@ function coerceChangeValue(path: string, value: unknown): unknown {
     }
     return value;
   }
+  if (path === "schedule.bufferBeforeMin" || path === "schedule.bufferAfterMin") {
+    if (value === null) {
+      return null;
+    }
+    if (typeof value !== "number" || value < 0) {
+      throw new HttpError(400, `${path} must be >= 0`);
+    }
+    return value;
+  }
+
   if (path === "priority") {
     return parsePriority(value);
   }
@@ -629,3 +721,168 @@ export function queryRecord(query: Record<string, unknown>): Record<string, unkn
   }
   return out;
 }
+
+export function parseUndoInput(body: unknown): CalendarUndoInput {
+  return {};
+}
+
+function requireHour(record: Record<string, unknown>, key: string): number {
+  const value = record[key];
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > 23) {
+    throw new HttpError(400, `${key} must be an integer 0–23`);
+  }
+  return value;
+}
+
+function parseHourWindow(
+  value: unknown,
+  field: string,
+): { startHour: number; endHour: number } {
+  if (!isRecord(value)) {
+    throw new HttpError(400, `${field} must be an object`);
+  }
+  rejectUnknown(value, ["startHour", "endHour"]);
+  return {
+    startHour: requireHour(value, "startHour"),
+    endHour: requireHour(value, "endHour"),
+  };
+}
+
+export function parseUserPreferencesInput(body: unknown): CalendarUserPreferencesInput {
+  const record = body === undefined || body === null ? {} : body;
+  if (!isRecord(record)) {
+    throw new HttpError(400, "Invalid body");
+  }
+  rejectUnknown(record, ["action", "preferences"]);
+  const action = requireString(record, "action");
+  if (action !== "get" && action !== "update") {
+    throw new HttpError(400, "action must be get or update");
+  }
+  if (action === "get") {
+    return { action };
+  }
+  if (!isRecord(record.preferences)) {
+    throw new HttpError(400, "preferences object is required for update");
+  }
+  rejectUnknown(record.preferences, [
+    "quietHours",
+    "bestLearningWindow",
+    "focusDurationMin",
+    "maxDailyHighPriorityTasks",
+  ]);
+  const preferences: CalendarUserPreferencesBlob = {};
+  if (record.preferences.quietHours !== undefined) {
+    preferences.quietHours = parseHourWindow(
+      record.preferences.quietHours,
+      "quietHours",
+    );
+  }
+  if (record.preferences.bestLearningWindow !== undefined) {
+    preferences.bestLearningWindow = parseHourWindow(
+      record.preferences.bestLearningWindow,
+      "bestLearningWindow",
+    );
+  }
+  if (record.preferences.focusDurationMin !== undefined) {
+    const value = record.preferences.focusDurationMin;
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 1) {
+      throw new HttpError(400, "focusDurationMin must be >= 1");
+    }
+    preferences.focusDurationMin = value;
+  }
+  if (record.preferences.maxDailyHighPriorityTasks !== undefined) {
+    const value = record.preferences.maxDailyHighPriorityTasks;
+    if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+      throw new HttpError(400, "maxDailyHighPriorityTasks must be an integer >= 1");
+    }
+    preferences.maxDailyHighPriorityTasks = value;
+  }
+  return { action, preferences };
+}
+
+export function parseSplitTaskInput(
+  body: unknown,
+  fallbackTimezone: string,
+): CalendarSplitTaskInput {
+  if (!isRecord(body)) {
+    throw new HttpError(400, "Invalid body");
+  }
+  const title = requireString(body, "title");
+  if (typeof body.totalDurationMin !== "number" || body.totalDurationMin <= 0) {
+    throw new HttpError(400, "totalDurationMin must be > 0");
+  }
+  const timezone =
+    typeof body.timezone === "string" && body.timezone !== ""
+      ? body.timezone
+      : fallbackTimezone;
+  assertTimeZone(timezone);
+  return {
+    title,
+    totalDurationMin: body.totalDurationMin,
+    maxChunkMin:
+      typeof body.maxChunkMin === "number" && body.maxChunkMin > 0
+        ? body.maxChunkMin
+        : undefined,
+    date: body.date ? parseYmd(body.date, "date") : undefined,
+    timezone,
+  };
+}
+
+export function parseRescueMissedInput(
+  body: unknown,
+  fallbackTimezone: string,
+): CalendarRescueMissedInput {
+  const record = body === undefined || body === null ? {} : body;
+  if (!isRecord(record)) {
+    throw new HttpError(400, "Invalid body");
+  }
+  const timezone =
+    typeof record.timezone === "string" && record.timezone !== ""
+      ? record.timezone
+      : fallbackTimezone;
+  assertTimeZone(timezone);
+  return {
+    autoReschedule: Boolean(record.autoReschedule),
+    date: record.date ? parseYmd(record.date, "date") : undefined,
+    timezone,
+  };
+}
+
+export function parseRolloverInput(
+  body: unknown,
+  fallbackTimezone: string,
+): CalendarRolloverInput {
+  const record = body === undefined || body === null ? {} : body;
+  if (!isRecord(record)) {
+    throw new HttpError(400, "Invalid body");
+  }
+  const timezone =
+    typeof record.timezone === "string" && record.timezone !== ""
+      ? record.timezone
+      : fallbackTimezone;
+  assertTimeZone(timezone);
+  return {
+    targetDate: record.targetDate ? parseYmd(record.targetDate, "targetDate") : undefined,
+    timezone,
+  };
+}
+
+export function parseWeeklySummaryInput(
+  body: unknown,
+  fallbackTimezone: string,
+): CalendarWeeklySummaryInput {
+  const record = body === undefined || body === null ? {} : body;
+  if (!isRecord(record)) {
+    throw new HttpError(400, "Invalid body");
+  }
+  const timezone =
+    typeof record.timezone === "string" && record.timezone !== ""
+      ? record.timezone
+      : fallbackTimezone;
+  assertTimeZone(timezone);
+  return {
+    date: record.date ? parseYmd(record.date, "date") : undefined,
+    timezone,
+  };
+}
+

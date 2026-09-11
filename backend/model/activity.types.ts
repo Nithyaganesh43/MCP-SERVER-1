@@ -19,6 +19,8 @@ export interface ActivitySchedule {
   startAt: Date | null;
   endAt: Date | null;
   durationMin: number | null;
+  bufferBeforeMin?: number | null;
+  bufferAfterMin?: number | null;
   timezone: string;
 }
 

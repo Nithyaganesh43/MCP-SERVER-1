@@ -201,20 +201,24 @@ export function occupancy(
   startAt: Date | null,
   endAt: Date | null,
   durationMin: number | null,
+  bufferBeforeMin?: number | null,
+  bufferAfterMin?: number | null,
 ): { start: Date; end: Date } | null {
   if (!startAt) {
     return null;
   }
+  const bBeforeMs = (bufferBeforeMin ?? 0) * MS_PER_MIN;
+  const bAfterMs = (bufferAfterMin ?? 0) * MS_PER_MIN;
+  const start = new Date(startAt.getTime() - bBeforeMs);
+  let end: Date;
   if (endAt) {
-    return { start: startAt, end: endAt };
+    end = new Date(endAt.getTime() + bAfterMs);
+  } else if (durationMin != null) {
+    end = new Date(startAt.getTime() + durationMin * MS_PER_MIN + bAfterMs);
+  } else {
+    end = new Date(startAt.getTime() + bAfterMs);
   }
-  if (durationMin != null) {
-    return {
-      start: startAt,
-      end: new Date(startAt.getTime() + durationMin * MS_PER_MIN),
-    };
-  }
-  return { start: startAt, end: startAt };
+  return { start, end };
 }
 
 export function overlaps(
@@ -222,6 +226,37 @@ export function overlaps(
   b: { start: Date; end: Date },
 ): boolean {
   return a.start < b.end && b.start < a.end;
+}
+
+export function quietHoursOccupied(
+  dayYmd: string,
+  timeZone: string,
+  quietHours?: { start: string; end: string },
+): Occupied[] {
+  if (!quietHours) return [];
+  const { start: startHm, end: endHm } = quietHours;
+  const blocks: Occupied[] = [];
+
+  if (startHm > endHm) {
+    const start1 = zonedLocal(dayYmd, "00:00:00", timeZone);
+    const end1 = zonedLocal(dayYmd, `${endHm}:00`, timeZone);
+    if (start1 < end1) {
+      blocks.push({ start: start1, end: end1, title: "Quiet hours" });
+    }
+    const start2 = zonedLocal(dayYmd, `${startHm}:00`, timeZone);
+    const nextYmd = addCalendarDays(dayYmd, 1);
+    const end2 = zonedLocal(nextYmd, "00:00:00", timeZone);
+    if (start2 < end2) {
+      blocks.push({ start: start2, end: end2, title: "Quiet hours" });
+    }
+  } else if (startHm < endHm) {
+    const start = zonedLocal(dayYmd, `${startHm}:00`, timeZone);
+    const end = zonedLocal(dayYmd, `${endHm}:00`, timeZone);
+    if (start < end) {
+      blocks.push({ start, end, title: "Quiet hours" });
+    }
+  }
+  return blocks;
 }
 
 export function mergeBusy(items: Occupied[]): Occupied[] {
@@ -249,6 +284,9 @@ export function largestSlot(
   dayEnd: Date,
   busy: Occupied[],
   durationMin: number,
+  options?: {
+    preferredWindow?: { start: Date; end: Date };
+  },
 ): { start: Date; end: Date; nextTitle: string | null } | null {
   const need = durationMin * MS_PER_MIN;
   const clipped = busy
@@ -273,6 +311,24 @@ export function largestSlot(
   if (cursor < dayEnd) {
     gaps.push({ start: cursor, end: dayEnd, nextTitle: null });
   }
+
+  // If a preferred window is provided, try to find a fit in that window first
+  if (options?.preferredWindow) {
+    const pStart = options.preferredWindow.start;
+    const pEnd = options.preferredWindow.end;
+    for (const gap of gaps) {
+      const overlapStart = gap.start > pStart ? gap.start : pStart;
+      const overlapEnd = gap.end < pEnd ? gap.end : pEnd;
+      if (overlapEnd.getTime() - overlapStart.getTime() >= need) {
+        return {
+          start: overlapStart,
+          end: new Date(overlapStart.getTime() + need),
+          nextTitle: gap.nextTitle,
+        };
+      }
+    }
+  }
+
   let best: Gap | null = null;
   for (const gap of gaps) {
     const size = gap.end.getTime() - gap.start.getTime();

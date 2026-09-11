@@ -9,8 +9,14 @@ import {
   parseDeleteInput,
   parseListInput,
   parseRescheduleInput,
+  parseRescueMissedInput,
+  parseRolloverInput,
+  parseSplitTaskInput,
   parseSuggestInput,
+  parseUndoInput,
   parseUpdateInput,
+  parseUserPreferencesInput,
+  parseWeeklySummaryInput,
 } from "../../calendar/contract";
 
 function getService(ctx: UserContext): CalendarService {
@@ -36,6 +42,8 @@ export const createActivityTool: Tool = {
           startAt: { type: ["string", "null"] },
           endAt: { type: ["string", "null"] },
           durationMin: { type: ["number", "null"] },
+          bufferBeforeMin: { type: ["number", "null"] },
+          bufferAfterMin: { type: ["number", "null"] },
           timezone: { type: "string" },
         },
       },
@@ -263,6 +271,168 @@ export const suggestSlotTool: Tool = {
   },
 };
 
+export const undoTool: Tool = {
+  name: "calendar.undo",
+  version: "1.0.0",
+  description: "Undo the last calendar operation (create, update, delete, complete, reschedule)",
+  permissions: ["calendar:write"],
+  inputSchema: {
+    type: "object",
+    properties: {},
+  },
+  outputSchema: {
+    type: "object",
+    properties: {
+      success: { type: "boolean" },
+      message: { type: "string" },
+    },
+  },
+  execute: async (input: unknown, ctx: UserContext) => {
+    const parsed = parseUndoInput(input);
+    const service = getService(ctx);
+    return service.undo(parsed);
+  },
+};
+
+export const userPreferencesTool: Tool = {
+  name: "calendar.user_preferences",
+  version: "1.0.0",
+  description: "Get or update user personal preferences (learning window, focus duration, quiet hours, etc.)",
+  permissions: ["calendar:write"],
+  inputSchema: {
+    type: "object",
+    required: ["action"],
+    properties: {
+      action: { type: "string", enum: ["get", "update"] },
+      preferences: { type: "object" },
+    },
+  },
+  outputSchema: {
+    type: "object",
+    properties: {
+      success: { type: "boolean" },
+      preferences: { type: "object" },
+    },
+  },
+  execute: async (input: unknown, ctx: UserContext) => {
+    const parsed = parseUserPreferencesInput(input);
+    const service = getService(ctx);
+    return service.userPreferences(parsed);
+  },
+};
+
+export const splitTaskTool: Tool = {
+  name: "calendar.split_task",
+  version: "1.0.0",
+  description: "Split long duration tasks into manageable focus chunks across days",
+  permissions: ["calendar:read"],
+  inputSchema: {
+    type: "object",
+    required: ["title", "totalDurationMin"],
+    properties: {
+      title: { type: "string" },
+      totalDurationMin: { type: "number" },
+      maxChunkMin: { type: "number" },
+      date: { type: "string" },
+      timezone: { type: "string" },
+    },
+  },
+  outputSchema: {
+    type: "object",
+    properties: {
+      title: { type: "string" },
+      totalDurationMin: { type: "number" },
+      chunkMin: { type: "number" },
+      chunks: { type: "array" },
+    },
+  },
+  execute: async (input: unknown, ctx: UserContext) => {
+    const parsed = parseSplitTaskInput(input, ctx.timezone);
+    const service = getService(ctx);
+    return service.splitTask(parsed);
+  },
+};
+
+export const rescueMissedTool: Tool = {
+  name: "calendar.rescue_missed",
+  version: "1.0.0",
+  description: "Find overdue pending tasks and optionally reschedule them",
+  permissions: ["calendar:write"],
+  inputSchema: {
+    type: "object",
+    properties: {
+      autoReschedule: { type: "boolean" },
+      date: { type: "string" },
+      timezone: { type: "string" },
+    },
+  },
+  outputSchema: {
+    type: "object",
+    properties: {
+      rescuedCount: { type: "number" },
+      rescued: { type: "array" },
+    },
+  },
+  execute: async (input: unknown, ctx: UserContext) => {
+    const parsed = parseRescueMissedInput(input, ctx.timezone);
+    const service = getService(ctx);
+    return service.rescueMissed(parsed);
+  },
+};
+
+export const rolloverTool: Tool = {
+  name: "calendar.rollover",
+  version: "1.0.0",
+  description: "Rollover uncompleted floating or past pending tasks to tomorrow morning",
+  permissions: ["calendar:write"],
+  inputSchema: {
+    type: "object",
+    properties: {
+      targetDate: { type: "string" },
+      timezone: { type: "string" },
+    },
+  },
+  outputSchema: {
+    type: "object",
+    properties: {
+      movedCount: { type: "number" },
+      activities: { type: "array" },
+    },
+  },
+  execute: async (input: unknown, ctx: UserContext) => {
+    const parsed = parseRolloverInput(input, ctx.timezone);
+    const service = getService(ctx);
+    return service.rollover(parsed);
+  },
+};
+
+export const weeklySummaryTool: Tool = {
+  name: "calendar.weekly_summary",
+  version: "1.0.0",
+  description: "Analyze weekly workload capacity, detect overloaded days, and recommend free days",
+  permissions: ["calendar:read"],
+  inputSchema: {
+    type: "object",
+    properties: {
+      date: { type: "string" },
+      timezone: { type: "string" },
+    },
+  },
+  outputSchema: {
+    type: "object",
+    properties: {
+      days: { type: "array" },
+      overloadedDays: { type: "array" },
+      freeDay: { type: ["string", "null"] },
+    },
+  },
+  execute: async (input: unknown, ctx: UserContext) => {
+    const parsed = parseWeeklySummaryInput(input, ctx.timezone);
+    const service = getService(ctx);
+    return service.weeklySummary(parsed);
+  },
+};
+
 export function registerCalendarModule(registry: ToolRegistry): void {
   registry.registerTool(createActivityTool);
   registry.registerTool(updateActivityTool);
@@ -272,4 +442,10 @@ export function registerCalendarModule(registry: ToolRegistry): void {
   registry.registerTool(rescheduleActivityTool);
   registry.registerTool(detectConflictsTool);
   registry.registerTool(suggestSlotTool);
+  registry.registerTool(undoTool);
+  registry.registerTool(userPreferencesTool);
+  registry.registerTool(splitTaskTool);
+  registry.registerTool(rescueMissedTool);
+  registry.registerTool(rolloverTool);
+  registry.registerTool(weeklySummaryTool);
 }

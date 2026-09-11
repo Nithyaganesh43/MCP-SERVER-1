@@ -37,20 +37,34 @@ describe("Rytham MCP Capability Layer (v1.0)", () => {
   });
 
   describe("Tool Discovery", () => {
-    it("should discover all 8 reference calendar tools", () => {
+    it("should discover all calendar.* tools", () => {
       const { tools } = server.discoverTools();
-      const toolNames = tools.map((t) => t.name).sort();
+      const calendarTools = tools.filter((t) => t.name.startsWith("calendar."));
+      const toolNames = calendarTools.map((t) => t.name).sort();
 
-      expect(tools.length).toBe(8);
+      expect(calendarTools.length).toBe(21);
       expect(toolNames).toEqual([
+        "calendar.capacity.check",
         "calendar.complete",
         "calendar.conflicts",
         "calendar.create",
         "calendar.delete",
         "calendar.list",
+        "calendar.missed.review",
+        "calendar.preferences.delete",
+        "calendar.preferences.get",
+        "calendar.preferences.save",
+        "calendar.preferences.update",
+        "calendar.preview",
         "calendar.reschedule",
+        "calendar.rescue_missed",
+        "calendar.rollover",
+        "calendar.split_task",
         "calendar.suggest_slot",
+        "calendar.undo",
         "calendar.update",
+        "calendar.user_preferences",
+        "calendar.weekly_summary",
       ]);
 
       tools.forEach((manifest) => {

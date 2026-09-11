@@ -10,6 +10,15 @@ export const DEFAULT_V1_PERMISSIONS = [
   "calendar:read",
   "calendar:write",
   "calendar:delete",
+  "calendar:preferences:read",
+  "calendar:preferences:write",
+  "calendar:preferences:delete",
+  "memory:read",
+  "memory:write",
+  "memory:delete",
+  "reflection:read",
+  "conversation:read",
+  "conversation:write",
 ];
 
 export interface CreateContextOptions {

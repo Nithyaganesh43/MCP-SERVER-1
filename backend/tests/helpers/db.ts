@@ -1,6 +1,12 @@
 import mongoose from "mongoose";
 import { MongoMemoryServer } from "mongodb-memory-server";
-import { ActivityModel, UserModel } from "../../model/index";
+import {
+  ActivityModel,
+  ConversationStateModel,
+  MemoryModel,
+  SchedulingPreferenceModel,
+  UserModel,
+} from "../../model/index";
 
 let mongod: MongoMemoryServer | null = null;
 
@@ -16,6 +22,9 @@ export async function connectTestDb(): Promise<string> {
   await mongoose.connect(uri);
   await ActivityModel.syncIndexes();
   await UserModel.syncIndexes();
+  await SchedulingPreferenceModel.syncIndexes();
+  await MemoryModel.syncIndexes();
+  await ConversationStateModel.syncIndexes();
   return uri;
 }
 

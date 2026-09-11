@@ -57,6 +57,8 @@ const ScheduleSchema = new Schema(
     startAt: { type: Date, default: null },
     endAt: { type: Date, default: null },
     durationMin: { type: Number, default: null, min: 0 },
+    bufferBeforeMin: { type: Number, default: null, min: 0 },
+    bufferAfterMin: { type: Number, default: null, min: 0 },
     timezone: { type: String, required: true },
   },
   { _id: false },

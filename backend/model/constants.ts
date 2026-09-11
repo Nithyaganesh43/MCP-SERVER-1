@@ -4,6 +4,10 @@
 
 export const COLLECTION_ACTIVITIES = "activities" as const;
 export const COLLECTION_USERS = "users" as const;
+export const COLLECTION_ACTIVITY_HISTORIES = "activity_histories" as const;
+export const COLLECTION_SCHEDULING_PREFERENCES = "scheduling_preferences" as const;
+export const COLLECTION_MEMORIES = "memories" as const;
+export const COLLECTION_CONVERSATION_STATES = "conversation_states" as const;
 
 export const FLEXIBILITY = ["fixed", "moveable", "floating"] as const;
 export type Flexibility = (typeof FLEXIBILITY)[number];
@@ -35,6 +39,27 @@ export type Priority = (typeof PRIORITY)[number];
 export const WEEKDAY = [1, 2, 3, 4, 5, 6, 7] as const;
 export type Weekday = (typeof WEEKDAY)[number];
 
+export const PREFERENCE_TYPE = [
+  "sleep_window",
+  "learning_window",
+  "quiet_hours",
+  "commute",
+  "workload_limit",
+  "focus_duration",
+  "exam_planning",
+] as const;
+export type PreferenceType = (typeof PREFERENCE_TYPE)[number];
+
+export const MEMORY_CATEGORY = [
+  "preference",
+  "habit",
+  "goal",
+  "relationship",
+  "health",
+  "temporary_preference",
+] as const;
+export type MemoryCategory = (typeof MEMORY_CATEGORY)[number];
+
 export const PRIORITY_MEANING = {
   5: "Critical",
   4: "Important",
@@ -56,6 +81,16 @@ export const STATUS_MEANING = {
   cancelled: "Intentionally removed",
 } as const satisfies Record<ActivityStatus, string>;
 
+export const PREFERENCE_TYPE_MEANING = {
+  sleep_window: "Bedtime to wake time",
+  learning_window: "Preferred study time",
+  quiet_hours: "No meetings/calls",
+  commute: "Travel buffer",
+  workload_limit: "Max important tasks per day",
+  focus_duration: "Default session length in minutes",
+  exam_planning: "Revise before exams",
+} as const satisfies Record<PreferenceType, string>;
+
 export const DEFAULT_NOTE = "";
 export const DEFAULT_CATEGORY = "";
 export const DEFAULT_STATUS: ActivityStatus = "pending";
@@ -69,9 +104,21 @@ export const DEFAULT_RECURRENCE = {
   until: null as Date | null,
 };
 
+export const DEFAULT_MEMORY_CONFIDENCE = 0.9;
+export const DEFAULT_MEMORY_EXPIRES_AT: Date | null = null;
+export const DEFAULT_CONVERSATION_MISSION = "";
+export const DEFAULT_CONVERSATION_CONTEXT = "";
+export const DEFAULT_CONVERSATION_ENTITIES: Record<string, never> = {};
+
 export const INDEXES = [
   { userId: 1, "schedule.startAt": 1 },
   { userId: 1, status: 1 },
   { userId: 1, priority: -1 },
   { userId: 1, status: 1, "schedule.startAt": 1 },
 ] as const;
+
+export const INDEXES_SCHEDULING_PREFERENCES = [{ userId: 1, type: 1 }] as const;
+
+export const INDEXES_MEMORIES = [{ userId: 1, category: 1 }] as const;
+
+export const INDEXES_CONVERSATION_STATES = [{ userId: 1 }] as const;

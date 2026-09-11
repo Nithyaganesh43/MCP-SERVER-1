@@ -1,9 +1,18 @@
 import mongoose from "mongoose";
-import { ActivityModel, UserModel } from "./model/index";
+import {
+  ActivityModel,
+  ConversationStateModel,
+  MemoryModel,
+  SchedulingPreferenceModel,
+  UserModel,
+} from "./model/index";
 
 export async function connectDb(uri: string): Promise<void> {
   mongoose.set("strictQuery", true);
   await mongoose.connect(uri);
   await ActivityModel.syncIndexes();
   await UserModel.syncIndexes();
+  await SchedulingPreferenceModel.syncIndexes();
+  await MemoryModel.syncIndexes();
+  await ConversationStateModel.syncIndexes();
 }

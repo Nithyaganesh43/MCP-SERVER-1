@@ -1,5 +1,5 @@
 ---
-description: Rytham V1 — read agent.md every prompt. No independent decisions. Update agent.md after every change.
+description: Rytham V1 — read agent.md every prompt. Follow Multi-Agent Completion Contract. No independent decisions. Update agent.md after every change.
 alwaysApply: true
 ---
 
@@ -7,10 +7,11 @@ alwaysApply: true
 
 Before any response or code change:
 
-1. Read `agent.md` at the project root.
+1. Read `agent.md` at the project root (Multi-Agent Completion Contract, protocol, then Rytham contract).
 2. Follow it exactly.
-3. Do not invent fields, collections, modules, folders, libraries, defaults, or architecture.
-4. If `agent.md` does not specify the work, stop and ask.
-5. After every completed change, update `agent.md` so **Current state**, **File map**, and the schema contract match the repo.
+3. Read every file in `activeagents/active/`. Create or resume `activeagents/active/<index>_<agent-name>-<feature>.md` before editing any project file. Check incoming messages. No file locks.
+4. Complete the assigned scope end-to-end. Approved decisions become specification immediately. Infer consistent missing details from existing architecture instead of stopping.
+5. Escalate only for true product decisions (multiple behaviors, security/privacy, public API compatibility, or explicit user design request).
+6. After every completed change, update `agent.md` so **Current state**, **File map**, and the schema contract match the repo. Archive the task file to `activeagents/finished/`.
 
-Do not skip `agent.md`.
+Do not skip `agent.md`. Do not skip the Multi-Agent Completion Contract.

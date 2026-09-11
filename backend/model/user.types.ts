@@ -1,6 +1,6 @@
 import type { Types } from "mongoose";
 
-/** Identity document. Field set is closed. Google is the identity provider. */
+/** Identity document. Google is the identity provider. */
 export interface User {
   _id: Types.ObjectId;
   googleId: string;
