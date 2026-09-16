@@ -19,11 +19,14 @@ This document defines the folder structure rules, architectural patterns, visual
   - `http.ts` — REST endpoint transport delegating directly to `service.ts`.
 
 ## 2. Directory Organization Principles
-- **Root Directory (`PersonalAi/`):** Houses repository-wide operational protocols, multi-agent contracts, system architecture specifications, cloud deployment configs, and root dotfiles.
-- **`plans/` Directory:** Dedicated folder containing feature blueprints, architecture specifications, and module contracts (`plans/plan.md`, `plans/plan-b.md`).
-- **`activeagents/` Directory:** The single source of truth for parallel agent task tracking and archiving.
-  - `activeagents/active/` — Holds live task status files (`<index>_<agent-name>-<feature>.md`).
-  - `activeagents/finished/` — Holds completed and archived task logs.
+- **Root Directory (`PersonalAi/`):** Houses primary agent entry point (`agent.md`), cloud deployment configs (`render.yaml`), backend source code, and root dotfiles.
+- **`doc/` Directory:** Consolidated documentation folder containing all operational protocols, rules, schemas, plans, and agent tracking files.
+  - `doc/rules.md` — Consolidated repository rules & mandatory multi-agent checklist.
+  - `doc/folder structure.md` — Folder structure rules & comprehensive AI file context.
+  - `doc/generic prompt.md` — Agent prompt template reference.
+  - `doc/image.png` — Visual documentation reference image.
+  - `doc/plans/` — Dedicated folder containing feature blueprints, architecture specifications, and module contracts (`plan.md`, `plan-b.md`).
+  - `doc/activeagents/` — The single source of truth for parallel agent task tracking and archiving (`active/`, `finished/`).
 - **`backend/` Directory:** Node.js/Express server written in TypeScript.
 - **`backend/model/` Directory:** Centralized database domain layer. Holds database models, TypeScript contracts, Mongoose schemas, and global constants.
 - **`backend/mcp/` Directory:** Model Context Protocol (MCP) server layer exposing AI tools via stdio and Streamable HTTP.
@@ -34,7 +37,7 @@ This document defines the folder structure rules, architectural patterns, visual
 - **Filenames:** Use lowercase `kebab-case` for multi-word filenames (e.g., `calendar-intelligence.ts`, `scheduling-preference.types.ts`, `plan-b.md`).
 - **Model Files:** Database entities use paired files: `<entity>.types.ts` (interfaces) and `<entity>.schema.ts` (Mongoose schema).
 - **Test Files:** Named `<feature>.test.ts` or `<module>.test.ts` placed inside `backend/tests/`.
-- **Active Agent Files:** Must follow sequential date-based indexing: `activeagents/active/<index>_<agent-name>-<feature>.md` (e.g., `1_workflow-multi-agent.md`).
+- **Active Agent Files:** Must follow sequential date-based indexing: `doc/activeagents/active/<index>_<agent-name>-<feature>.md` (e.g., `1_workflow-multi-agent.md`).
 
 ## 4. File Placement Rules
 - **Constants & Enums:** All closed enums, default values, priority mappings, and database indexes belong exclusively in `backend/model/constants.ts`.
@@ -43,12 +46,13 @@ This document defines the folder structure rules, architectural patterns, visual
 - **Business Logic:** Core application logic belongs in `<module>/service.ts`.
 - **MCP Registrations:** MCP tool registration functions belong in `backend/mcp/modules/<module>.ts`.
 - **HTTP Transport:** REST routes belong in `<module>/http.ts` or `backend/auth/http.ts`.
-- **Feature Plans & Specs:** Product design blueprints and multi-module specifications belong in `plans/`.
+- **Feature Plans & Specs:** Product design blueprints and multi-module specifications belong in `doc/plans/`.
+- **Documentation & Rules:** Operational rules and specifications belong in `doc/`.
 
 ## 5. Mandatory Maintenance Rule (Folder Structure Update Protocol)
-- **CRITICAL:** Whenever ANY file or folder in this repository is **created**, **added**, **renamed**, **moved**, or **deleted**, the agent modifying the filesystem MUST immediately update this file (`folder structure.md`).
+- **CRITICAL:** Whenever ANY file or folder in this repository is **created**, **added**, **renamed**, **moved**, or **deleted**, the agent modifying the filesystem MUST immediately update this file (`doc/folder structure.md`).
 - Section 1 (rules) and Section 2 (file breakdown & context) MUST be kept 100% synchronized with the actual workspace state.
-- No task is complete until `folder structure.md` accurately reflects the codebase.
+- No task is complete until `doc/folder structure.md` accurately reflects the codebase.
 
 ---
 
@@ -59,39 +63,44 @@ This document defines the folder structure rules, architectural patterns, visual
 ```
 PersonalAi/
 ├── agent.md                          # Multi-Agent Protocol & Rytham Operating Contract Pointer
-├── rules.md                          # Consolidated repository rules & agent checklist
-├── folder structure.md               # Folder structure rules & full AI file context
-├── generic prompt.md                 # Agent prompt template reference
 ├── render.yaml                       # Render deployment blueprint (Hosted MCP & Web Service)
 ├── .gitignore                        # Git exclusion rules (.env, node_modules, .cursor/mcp.json)
-├── plans/                            # Product & Architecture Specifications
-│   ├── plan.md                       # AI Orchestrator Specification V2
-│   └── plan-b.md                     # Karen Module & Calendar Intelligence Spec
 ├── .cursor/
 │   ├── mcp.json                      # Cursor MCP local configuration (Streamable HTTP URL)
 │   └── rules/
 │       └── rytham-workflow.mdc       # Always-apply Cursor rule enforcing agent.md
-├── activeagents/
-│   ├── active/
-│   │   ├── .gitkeep
-│   │   └── Rytham Architecture Principles.md # Architectural reference document
-│   └── finished/
-│       ├── .gitkeep
-│       ├── 1_workflow-multi-agent.md
-│       ├── 2_orchestrator-spec-v2.md
-│       ├── 3_composer-completion-contract.md
-│       ├── 4_calendar-intelligence-module.md
-│       ├── 5_rytham-karen-memory.md
-│       ├── 6_rytham-reflection-module.md
-│       ├── 7_rytham-conversation-context.md
-│       ├── 8_composer-module5-collections.md
-│       ├── 9_verifier-verify-and-fix.md
-│       ├── 10_orchestrator-karen-core.md
-│       └── 11_client-spa-auth-chat-usage.md
+├── doc/                              # Repository Documentation & Rules Directory
+│   ├── rules.md                      # Consolidated repository rules & agent checklist
+│   ├── folder structure.md           # Folder structure rules & full AI file context
+│   ├── generic prompt.md             # Agent prompt template reference
+│   ├── image.png                     # Visual documentation asset
+│   ├── plans/                        # Product & Architecture Specifications
+│   │   ├── plan.md                   # AI Orchestrator Specification V2
+│   │   └── plan-b.md                 # Karen Module & Calendar Intelligence Spec
+│   └── activeagents/                 # Parallel Agent Task Tracking & Archiving
+│       ├── active/
+│       │   ├── .gitkeep
+│       │   └── Rytham Architecture Principles.md # Architectural reference document
+│       └── finished/
+│           ├── .gitkeep
+│           ├── 1_workflow-multi-agent.md
+│           ├── 2_orchestrator-spec-v2.md
+│           ├── 3_composer-completion-contract.md
+│           ├── 4_calendar-intelligence-module.md
+│           ├── 5_rytham-karen-memory.md
+│           ├── 6_rytham-reflection-module.md
+│           ├── 7_rytham-conversation-context.md
+│           ├── 8_composer-module5-collections.md
+│           ├── 9_verifier-verify-and-fix.md
+│           ├── 10_orchestrator-karen-core.md
+│           ├── 11_client-spa-auth-chat-usage.md
+│           ├── 12_env-production.md
+│           └── 13_cursor-render-build-jest-types.md
 └── backend/
     ├── package.json                  # Node.js dependencies & scripts
     ├── package-lock.json             # Lockfile
-    ├── tsconfig.json                 # TypeScript compiler configuration
+    ├── tsconfig.json                 # TypeScript compiler configuration (includes Jest types for tests)
+    ├── tsconfig.build.json           # Production tsc config (no Jest; excludes tests)
     ├── jest.config.js                # Jest test runner configuration
     ├── .env                          # Secrets & env variables (GITIGNORED)
     ├── .env.example                  # Environment variable key template
@@ -280,7 +289,8 @@ PersonalAi/
 - **`backend/errors.ts`:** Defines custom `HttpError` class with status code support (e.g. 400, 401, 403, 404, 409).
 - **`backend/MCP_DEPLOYMENT.md`:** Architectural notes and deployment documentation for Render remote MCP hosting.
 - **`backend/package.json`:** Defines dependencies (`express`, `mongoose`, `jsonwebtoken`, `google-auth-library`, `@modelcontextprotocol/sdk`, `zod`, `dotenv`) and npm scripts (`dev`, `build`, `start`, `test`, `typecheck`).
-- **`backend/tsconfig.json`:** TypeScript compiler configuration with `strict: true` enabled.
+- **`backend/tsconfig.json`:** TypeScript compiler configuration with `strict: true` enabled. `types` includes `node` and `jest` for local typecheck and tests.
+- **`backend/tsconfig.build.json`:** Production emit config used by `npm run build`. Extends `tsconfig.json`, sets `types` to `node` only, and excludes `tests`.
 - **`backend/jest.config.js`:** Jest configuration setting environment to Node and TypeScript ts-jest transformer.
 
 ### `backend/model/` Directory (Database Domain Layer)

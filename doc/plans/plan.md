@@ -1,6 +1,6 @@
 # Rytham docs
 
-Implemented contracts for built code live in `rules.md` and `folder structure.md`. This file is the **AI Orchestrator specification (V2)**. Orchestrator code is built (`backend/orchestrator/`).
+Implemented contracts for built code live in `doc/rules.md` and `doc/folder structure.md`. This file is the **AI Orchestrator specification (V2)**. Orchestrator code is built (`backend/orchestrator/`).
 
 This file defines how the AI Orchestrator coordinates MCP modules. Storage and tool I/O for Karen and Calendar Intelligence are defined in `plan-b.md` sections 18–20.
 

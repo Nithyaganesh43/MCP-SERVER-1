@@ -11,16 +11,16 @@ Every AI agent working on this repository MUST read this file in full before sta
 ## 1.1 Parallel Work Standard
 - Multiple AI agents work in parallel on this codebase.
 - There is **no file locking or file ownership**.
-- Every agent reads all files in `activeagents/active/` before starting work to stay aware of live work.
+- Every agent reads all files in `doc/activeagents/active/` before starting work to stay aware of live work.
 - Overlapping edits by multiple agents are reconciled after task completion, not used as a reason to stop.
 
 ## 1.2 Rule 1 – Register Before Working
 Before editing any project file, every agent MUST create an active task tracking file:
 ```
-activeagents/active/<index>_<agent-name>-<feature>.md
+doc/activeagents/active/<index>_<agent-name>-<feature>.md
 ```
 - **Indexing:** Files are indexed sequentially by creation date: `1_*`, `2_*`, `3_*`, etc.
-- **Naming:** Lowercase, hyphenated, no spaces (e.g., `activeagents/active/1_backend-auth.md`).
+- **Naming:** Lowercase, hyphenated, no spaces (e.g., `doc/activeagents/active/1_backend-auth.md`).
 - **Template:**
   ```markdown
   # Agent: <agent-name>
@@ -47,7 +47,7 @@ activeagents/active/<index>_<agent-name>-<feature>.md
   ## Outgoing Messages
   (None)
   ```
-- **Constraint:** No code or configuration changes may begin before this file exists in `activeagents/active/`.
+- **Constraint:** No code or configuration changes may begin before this file exists in `doc/activeagents/active/`.
 
 ## 1.3 Rule 2 – Track Files Touched
 - Before and during modification of any project file, list it under **Files Touched** in your active task file.
@@ -85,11 +85,11 @@ When assigned work is complete:
 1. Update status to `COMPLETED` and record completion timestamp.
 2. Add a final summary of completed work.
 3. List every modified file.
-4. Move the task file from `activeagents/active/` to `activeagents/finished/`.
-5. **Conflict Resolution:** If `activeagents/finished/<same-name>.md` already exists, append a timestamp suffix: `<index>_<name>-YYYYMMDD-HHMM.md`.
+4. Move the task file from `doc/activeagents/active/` to `doc/activeagents/finished/`.
+5. **Conflict Resolution:** If `doc/activeagents/finished/<same-name>.md` already exists, append a timestamp suffix: `<index>_<name>-YYYYMMDD-HHMM.md`.
 
 ## 1.7 Rule 6 – Recovery Procedure
-- If an agent starts and finds its task file already exists in `activeagents/active/`:
+- If an agent starts and finds its task file already exists in `doc/activeagents/active/`:
   - Resume that task file.
   - Continue updating the existing history.
   - Never create duplicate active task files for the same task.
@@ -118,16 +118,16 @@ Every approved decision becomes part of the project specification immediately. A
 
 Before performing ANY work on the codebase, every AI agent MUST execute the following startup checklist:
 
-- [ ] **Step 1:** Read [`rules.md`](file:///d:/Professional-projects/PersonalAi/rules.md) (this file), [`agent.md`](file:///d:/Professional-projects/PersonalAi/agent.md), [`folder structure.md`](file:///d:/Professional-projects/PersonalAi/folder%20structure.md), and relevant specs in [`plans/`](file:///d:/Professional-projects/PersonalAi/plans/).
-- [ ] **Step 2:** Read every file inside `activeagents/active/` to identify active parallel work.
-- [ ] **Step 3:** Create or resume your own task tracking file (`activeagents/active/<index>_<agent-name>-<feature>.md`).
+- [ ] **Step 1:** Read [`doc/rules.md`](file:///d:/Professional-projects/PersonalAi/doc/rules.md) (this file), [`agent.md`](file:///d:/Professional-projects/PersonalAi/agent.md), [`doc/folder structure.md`](file:///d:/Professional-projects/PersonalAi/doc/folder%20structure.md), and relevant specs in [`doc/plans/`](file:///d:/Professional-projects/PersonalAi/doc/plans/).
+- [ ] **Step 2:** Read every file inside `doc/activeagents/active/` to identify active parallel work.
+- [ ] **Step 3:** Create or resume your own task tracking file (`doc/activeagents/active/<index>_<agent-name>-<feature>.md`).
 - [ ] **Step 4:** Check for any incoming messages in your task file.
 - [ ] **Step 5:** Read relevant domain modules (`backend/model/`, `backend/auth/`, `backend/calendar/`, `backend/mcp/`) before editing code.
 - [ ] **Step 6:** Perform only the scope requested by the user and permitted by the project contract.
 - [ ] **Step 7:** Keep types, schemas, constants, tool contracts, and documentation synchronized across all single-source mirrors.
 - [ ] **Step 8:** Run verification commands (`npm run typecheck` and `npm test` inside `backend/`).
-- [ ] **Step 9:** Update [`folder structure.md`](file:///d:/Professional-projects/PersonalAi/folder%20structure.md) if any files were added, renamed, moved, or deleted.
-- [ ] **Step 10:** Archive your task file to `activeagents/finished/` upon completion.
+- [ ] **Step 9:** Update [`doc/folder structure.md`](file:///d:/Professional-projects/PersonalAi/doc/folder%20structure.md) if any files were added, renamed, moved, or deleted.
+- [ ] **Step 10:** Archive your task file to `doc/activeagents/finished/` upon completion.
 
 ---
 
@@ -143,7 +143,7 @@ Before performing ANY work on the codebase, every AI agent MUST execute the foll
 
 | Situation | Required Agent Action |
 | --- | --- |
-| Specified in `rules.md`, `agent.md`, `plans/plan.md`, `plans/plan-b.md`, or user prompt | Follow it strictly and update all affected documentation in the same task. |
+| Specified in `doc/rules.md`, `agent.md`, `doc/plans/plan.md`, `doc/plans/plan-b.md`, or user prompt | Follow it strictly and update all affected documentation in the same task. |
 | Small implementation detail missing within assigned scope | Infer a consistent solution from existing architecture and document it. |
 | Multiple valid product behaviors possible | Stop work and ask the user (Escalation Rule). |
 | Security, privacy, or public API contract change | Stop work and ask the user (Escalation Rule). |
@@ -254,9 +254,9 @@ All Mongoose models use `strict: true`, omit `versionKey`, and enforce closed fi
 > [!IMPORTANT]
 > **FOLDER STRUCTURE MAINTENANCE PROTOCOL**
 > Whenever any AI agent creates, adds, renames, moves, or deletes ANY file or directory within this repository:
-> 1. The agent MUST immediately open and update [`folder structure.md`](file:///d:/Professional-projects/PersonalAi/folder%20structure.md) in the exact same task turn.
+> 1. The agent MUST immediately open and update [`doc/folder structure.md`](file:///d:/Professional-projects/PersonalAi/doc/folder%20structure.md) in the exact same task turn.
 > 2. Section 1 (rules) and Section 2 (visual tree and file-by-file descriptions) MUST be updated to accurately match the new filesystem layout.
-> 3. No change task is considered complete or ready for archiving until [`folder structure.md`](file:///d:/Professional-projects/PersonalAi/folder%20structure.md) is updated and verified.
+> 3. No change task is considered complete or ready for archiving until [`doc/folder structure.md`](file:///d:/Professional-projects/PersonalAi/doc/folder%20structure.md) is updated and verified.
 
 ---
 
@@ -265,11 +265,11 @@ All Mongoose models use `strict: true`, omit `versionKey`, and enforce closed fi
 > [!CAUTION]
 > **FULL RE-READING REQUIREMENT FOR AI AGENTS**
 > To eliminate context drift, hallucinations, and contract violations, AI agents MUST re-read all core rules and project context files (**fully and repeatedly**) before beginning or executing work:
-> 1. [`rules.md`](file:///d:/Professional-projects/PersonalAi/rules.md) (this file)
+> 1. [`doc/rules.md`](file:///d:/Professional-projects/PersonalAi/doc/rules.md) (this file)
 > 2. [`agent.md`](file:///d:/Professional-projects/PersonalAi/agent.md)
-> 3. [`folder structure.md`](file:///d:/Professional-projects/PersonalAi/folder%20structure.md)
-> 4. Feature plans in [`plans/`](file:///d:/Professional-projects/PersonalAi/plans/)
-> 5. All active task logs in `activeagents/active/`
+> 3. [`doc/folder structure.md`](file:///d:/Professional-projects/PersonalAi/doc/folder%20structure.md)
+> 4. Feature plans in [`doc/plans/`](file:///d:/Professional-projects/PersonalAi/doc/plans/)
+> 5. All active task logs in `doc/activeagents/active/`
 >
 > AI agents MUST NOT rely on memory, partial line view snippets, or assumptions. Re-reading complete files ensures 100% adherence to repository protocols and schemas.
 
