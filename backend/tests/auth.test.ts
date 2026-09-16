@@ -150,10 +150,13 @@ describe("Auth Tests", () => {
   it("should redirect the browser Google callback to the app with a token", async () => {
     mockedExchange.mockResolvedValue(TEST_GOOGLE_PROFILE);
 
-    const res = await request(app).get("/api/google/callback").query({ code: "test-code" });
+    const resApi = await request(app).get("/api/google/callback").query({ code: "test-code" });
+    expect(resApi.status).toBe(302);
+    expect(resApi.headers.location).toMatch(/^\/\?token=/);
 
-    expect(res.status).toBe(302);
-    expect(res.headers.location).toMatch(/^\/\?token=/);
+    const resRoot = await request(app).get("/google/callback").query({ code: "test-code" });
+    expect(resRoot.status).toBe(302);
+    expect(resRoot.headers.location).toMatch(/^\/\?token=/);
   });
 
   it("should redirect the browser Google callback to an error on failure", async () => {
@@ -166,10 +169,14 @@ describe("Auth Tests", () => {
     expect(denied.headers.location).toBe("/?error=auth");
   });
 
-  it("should redirect to Google from GET /api/google", async () => {
-    const res = await request(app).get("/api/google");
-    expect(res.status).toBe(302);
-    expect(res.headers.location).toContain("accounts.google.com");
-    expect(res.headers.location).toContain(TEST_GOOGLE_CLIENT_ID);
+  it("should redirect to Google from GET /api/google and GET /google", async () => {
+    const resApi = await request(app).get("/api/google");
+    expect(resApi.status).toBe(302);
+    expect(resApi.headers.location).toContain("accounts.google.com");
+    expect(resApi.headers.location).toContain(TEST_GOOGLE_CLIENT_ID);
+
+    const resRoot = await request(app).get("/google");
+    expect(resRoot.status).toBe(302);
+    expect(resRoot.headers.location).toContain("accounts.google.com");
   });
 });

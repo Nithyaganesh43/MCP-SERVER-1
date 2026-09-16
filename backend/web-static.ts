@@ -6,6 +6,7 @@ import express from "express";
 const API_PREFIXES = [
   "/auth",
   "/api",
+  "/google",
   "/chat",
   "/usage",
   "/activities",
@@ -23,12 +24,28 @@ function isApiPath(requestPath: string): boolean {
   );
 }
 
+function resolveWebDist(): string | null {
+  const candidates = [
+    path.join(process.cwd(), "web", "dist"),
+    path.join(process.cwd(), "backend", "web", "dist"),
+    path.resolve(__dirname, "web", "dist"),
+    path.resolve(__dirname, "..", "web", "dist"),
+  ];
+  for (const dir of candidates) {
+    const indexFile = path.join(dir, "index.html");
+    if (fs.existsSync(indexFile)) {
+      return dir;
+    }
+  }
+  return null;
+}
+
 export function mountWeb(app: Express): void {
-  const webDist = path.join(process.cwd(), "web", "dist");
-  const indexFile = path.join(webDist, "index.html");
-  if (!fs.existsSync(indexFile)) {
+  const webDist = resolveWebDist();
+  if (!webDist) {
     return;
   }
+  const indexFile = path.join(webDist, "index.html");
 
   app.use(express.static(webDist));
   app.use((req: Request, res: Response, next: NextFunction) => {

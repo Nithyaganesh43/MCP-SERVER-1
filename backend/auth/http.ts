@@ -89,6 +89,7 @@ export function mountAuth(app: Express, config: Config): void {
 
   app.get("/auth/google", startGoogle);
   app.get("/api/google", startGoogle);
+  app.get("/google", startGoogle);
 
   app.get(
     "/auth/google/callback",
@@ -106,27 +107,28 @@ export function mountAuth(app: Express, config: Config): void {
     }),
   );
 
-  app.get(
-    "/api/google/callback",
-    wrap(async (req, res) => {
-      const error = req.query.error;
-      const code = req.query.code;
-      if (typeof error === "string" && error !== "") {
-        res.redirect("/?error=auth");
-        return;
-      }
-      if (typeof code !== "string" || code.trim() === "") {
-        res.redirect("/?error=auth");
-        return;
-      }
-      try {
-        const { token } = await loginFromGoogleCode(code, config);
-        res.redirect(`/?token=${encodeURIComponent(token)}`);
-      } catch {
-        res.redirect("/?error=auth");
-      }
-    }),
-  );
+  const handleBrowserCallback = wrap(async (req, res) => {
+    const error = req.query.error;
+    const code = req.query.code;
+    if (typeof error === "string" && error !== "") {
+      res.redirect("/?error=auth");
+      return;
+    }
+    if (typeof code !== "string" || code.trim() === "") {
+      res.redirect("/?error=auth");
+      return;
+    }
+    try {
+      const { token } = await loginFromGoogleCode(code, config);
+      res.redirect(`/?token=${encodeURIComponent(token)}`);
+    } catch (err) {
+      console.error("[Google OAuth Error]", err);
+      res.redirect("/?error=auth");
+    }
+  });
+
+  app.get("/api/google/callback", handleBrowserCallback);
+  app.get("/google/callback", handleBrowserCallback);
 
   app.post(
     "/auth/api-key",
