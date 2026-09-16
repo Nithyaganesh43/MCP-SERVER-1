@@ -1,7 +1,7 @@
 import type { Express, NextFunction, Request, Response } from "express";
 import type { Config } from "../config";
 import { HttpError } from "../errors";
-import { UserModel, type User } from "../model/index";
+import { generateUserApiKey, UserModel, type User } from "../model/index";
 import { exchangeGoogleCode, googleAuthUrl, type GoogleProfile } from "./google";
 import { signJwt } from "./jwt";
 import { requireAuth } from "./middleware";
@@ -21,6 +21,7 @@ export function toUserView(user: User): {
   name: string;
   picture: string;
   timezone: string;
+  apiKey: string;
   createdAt: string;
   updatedAt: string;
 } {
@@ -31,9 +32,20 @@ export function toUserView(user: User): {
     name: user.name,
     picture: user.picture,
     timezone: user.timezone,
+    apiKey: user.apiKey,
     createdAt: user.createdAt.toISOString(),
     updatedAt: user.updatedAt.toISOString(),
   };
+}
+
+export async function ensureApiKey(user: User): Promise<User> {
+  if (typeof user.apiKey === "string" && user.apiKey.length > 0) {
+    return user;
+  }
+  const apiKey = generateUserApiKey();
+  await UserModel.updateOne({ _id: user._id }, { $set: { apiKey } });
+  user.apiKey = apiKey;
+  return user;
 }
 
 export async function findOrCreateUser(
@@ -42,7 +54,7 @@ export async function findOrCreateUser(
 ): Promise<User> {
   const existing = await UserModel.findOne({ googleId: profile.googleId });
   if (existing) {
-    return existing;
+    return ensureApiKey(existing);
   }
   return UserModel.create({
     googleId: profile.googleId,
@@ -50,15 +62,33 @@ export async function findOrCreateUser(
     name: profile.name,
     picture: profile.picture,
     timezone,
+    apiKey: generateUserApiKey(),
   });
+}
+
+async function loginFromGoogleCode(
+  code: string,
+  config: Config,
+): Promise<{ token: string; user: User }> {
+  const profile = await exchangeGoogleCode(code, config);
+  const user = await findOrCreateUser(profile, config.timezone);
+  const token = signJwt(
+    { sub: String(user._id), email: user.email, name: user.name },
+    config.jwtSecret,
+    config.jwtExpiresIn,
+  );
+  return { token, user };
 }
 
 export function mountAuth(app: Express, config: Config): void {
   const auth = requireAuth(config);
 
-  app.get("/auth/google", (_req, res) => {
+  const startGoogle = (_req: Request, res: Response) => {
     res.redirect(googleAuthUrl(config));
-  });
+  };
+
+  app.get("/auth/google", startGoogle);
+  app.get("/api/google", startGoogle);
 
   app.get(
     "/auth/google/callback",
@@ -71,8 +101,44 @@ export function mountAuth(app: Express, config: Config): void {
       if (typeof code !== "string" || code.trim() === "") {
         throw new HttpError(401, "Unauthorized");
       }
-      const profile = await exchangeGoogleCode(code, config);
-      const user = await findOrCreateUser(profile, config.timezone);
+      const { token, user } = await loginFromGoogleCode(code, config);
+      res.json({ token, user: toUserView(user) });
+    }),
+  );
+
+  app.get(
+    "/api/google/callback",
+    wrap(async (req, res) => {
+      const error = req.query.error;
+      const code = req.query.code;
+      if (typeof error === "string" && error !== "") {
+        res.redirect("/?error=auth");
+        return;
+      }
+      if (typeof code !== "string" || code.trim() === "") {
+        res.redirect("/?error=auth");
+        return;
+      }
+      try {
+        const { token } = await loginFromGoogleCode(code, config);
+        res.redirect(`/?token=${encodeURIComponent(token)}`);
+      } catch {
+        res.redirect("/?error=auth");
+      }
+    }),
+  );
+
+  app.post(
+    "/auth/api-key",
+    wrap(async (req, res) => {
+      const apiKey = req.body?.apiKey;
+      if (typeof apiKey !== "string" || apiKey.trim() === "") {
+        throw new HttpError(401, "Unauthorized");
+      }
+      const user = await UserModel.findOne({ apiKey: apiKey.trim() });
+      if (!user) {
+        throw new HttpError(401, "Unauthorized");
+      }
       const token = signJwt(
         { sub: String(user._id), email: user.email, name: user.name },
         config.jwtSecret,
@@ -94,7 +160,8 @@ export function mountAuth(app: Express, config: Config): void {
       if (!user) {
         throw new HttpError(401, "Unauthorized");
       }
-      res.json(toUserView(user));
+      const withKey = await ensureApiKey(user);
+      res.json(toUserView(withKey));
     }),
   );
 }

@@ -100,6 +100,8 @@ describe("Auth Tests", () => {
     expect(res.body.picture).toBe(TEST_GOOGLE_PROFILE.picture);
     expect(res.body.timezone).toBe(user.timezone);
     expect(res.body.googleId).toBe(TEST_GOOGLE_PROFILE.googleId);
+    expect(typeof res.body.apiKey).toBe("string");
+    expect(res.body.apiKey.length).toBeGreaterThan(0);
   });
 
   it("should redirect to Google from GET /auth/google", async () => {
@@ -119,5 +121,55 @@ describe("Auth Tests", () => {
   it("should return 401 when JWT is invalid", async () => {
     const res = await request(app).get("/auth/me").set(authHeader(invalidJwt()));
     expect(res.status).toBe(401);
+  });
+
+  it("should issue a JWT when logging in with a user API key", async () => {
+    const user = await seedTestUser();
+    const res = await request(app).post("/auth/api-key").send({ apiKey: user.apiKey });
+
+    expect(res.status).toBe(200);
+    expect(typeof res.body.token).toBe("string");
+    expect(res.body.user.id).toBe(String(user._id));
+    expect(res.body.user.apiKey).toBe(user.apiKey);
+
+    const claims = verifyJwt(res.body.token as string, TEST_JWT_SECRET);
+    expect(claims.sub).toBe(String(user._id));
+  });
+
+  it("should accept a user API key as a Bearer token", async () => {
+    const user = await seedTestUser();
+    const res = await request(app)
+      .get("/auth/me")
+      .set("Authorization", `Bearer ${user.apiKey}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe(String(user._id));
+    expect(res.body.apiKey).toBe(user.apiKey);
+  });
+
+  it("should redirect the browser Google callback to the app with a token", async () => {
+    mockedExchange.mockResolvedValue(TEST_GOOGLE_PROFILE);
+
+    const res = await request(app).get("/api/google/callback").query({ code: "test-code" });
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toMatch(/^\/\?token=/);
+  });
+
+  it("should redirect the browser Google callback to an error on failure", async () => {
+    const missing = await request(app).get("/api/google/callback");
+    expect(missing.status).toBe(302);
+    expect(missing.headers.location).toBe("/?error=auth");
+
+    const denied = await request(app).get("/api/google/callback").query({ error: "access_denied" });
+    expect(denied.status).toBe(302);
+    expect(denied.headers.location).toBe("/?error=auth");
+  });
+
+  it("should redirect to Google from GET /api/google", async () => {
+    const res = await request(app).get("/api/google");
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toContain("accounts.google.com");
+    expect(res.headers.location).toContain(TEST_GOOGLE_CLIENT_ID);
   });
 });

@@ -1,5 +1,5 @@
 import { Types } from "mongoose";
-import { ActivityModel, UserModel, type Activity, type User } from "../../model/index";
+import { ActivityModel, UserModel, generateUserApiKey, type Activity, type User } from "../../model/index";
 
 export const TEST_USER_ID_HEX = "000000000000000000000001";
 export const TEST_USER_ID = new Types.ObjectId(TEST_USER_ID_HEX);
@@ -23,6 +23,7 @@ export async function seedTestUser(): Promise<User> {
     name: TEST_GOOGLE_PROFILE.name,
     picture: TEST_GOOGLE_PROFILE.picture,
     timezone: TEST_TIMEZONE,
+    apiKey: generateUserApiKey(),
   });
 }
 

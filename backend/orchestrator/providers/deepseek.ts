@@ -1,19 +1,36 @@
 import { isPrimaryIntent } from "../intent";
 import type { ExecutionPlan, IntentResult } from "../types";
 import type { PlanReasoningInput, Reasoner, ReplyReasoningInput } from "./types";
+import {
+  DEFAULT_DEEPSEEK_MODEL,
+  DEFAULT_DEEPSEEK_URL,
+  DEEPSEEK_MAX_TOKENS,
+} from "../../model/constants";
+import type { TokenUsage } from "../../model/usage.types";
 
-const DEFAULT_URL = "https://api.deepseek.com/chat/completions";
-const DEFAULT_MODEL = "deepseek-chat";
+export type { TokenUsage };
 
 export class DeepSeekReasoner implements Reasoner {
   private apiKey: string;
   private url: string;
   private model: string;
+  private remainingTokens: number;
+  private onUsage?: (usage: TokenUsage) => Promise<void>;
 
-  constructor(options: { apiKey?: string; url?: string; model?: string } = {}) {
+  constructor(
+    options: {
+      apiKey?: string;
+      url?: string;
+      model?: string;
+      remainingTokens?: number;
+      onUsage?: (usage: TokenUsage) => Promise<void>;
+    } = {},
+  ) {
     this.apiKey = options.apiKey ?? process.env.DEEPSEEK_API_KEY ?? "";
-    this.url = options.url ?? process.env.DEEPSEEK_URL ?? DEFAULT_URL;
-    this.model = options.model ?? process.env.DEEPSEEK_MODEL ?? DEFAULT_MODEL;
+    this.url = options.url ?? process.env.DEEPSEEK_URL ?? DEFAULT_DEEPSEEK_URL;
+    this.model = options.model ?? process.env.DEEPSEEK_MODEL ?? DEFAULT_DEEPSEEK_MODEL;
+    this.remainingTokens = options.remainingTokens ?? Number.POSITIVE_INFINITY;
+    this.onUsage = options.onUsage;
   }
 
   async classify(
@@ -103,6 +120,9 @@ export class DeepSeekReasoner implements Reasoner {
   }
 
   private async complete(system: string, user: string): Promise<Record<string, unknown> | null> {
+    if (this.remainingTokens <= 0) {
+      return null;
+    }
     try {
       const response = await fetch(this.url, {
         method: "POST",
@@ -118,6 +138,7 @@ export class DeepSeekReasoner implements Reasoner {
           ],
           response_format: { type: "json_object" },
           temperature: 0,
+          max_tokens: DEEPSEEK_MAX_TOKENS,
         }),
       });
       if (!response.ok) {
@@ -125,7 +146,21 @@ export class DeepSeekReasoner implements Reasoner {
       }
       const body = (await response.json()) as {
         choices?: { message?: { content?: string } }[];
+        usage?: {
+          prompt_tokens?: number;
+          completion_tokens?: number;
+          total_tokens?: number;
+        };
       };
+      const usage = parseUsage(body.usage);
+      this.remainingTokens = Math.max(0, this.remainingTokens - usage.totalTokens);
+      if (this.onUsage) {
+        try {
+          await this.onUsage(usage);
+        } catch {
+          // usage persistence must never fail the model call
+        }
+      }
       const content = body.choices?.[0]?.message?.content;
       if (!content) {
         return null;
@@ -139,6 +174,21 @@ export class DeepSeekReasoner implements Reasoner {
       return null;
     }
   }
+}
+
+function parseUsage(raw: {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+} | undefined): TokenUsage {
+  const promptTokens = Number(raw?.prompt_tokens ?? 0);
+  const completionTokens = Number(raw?.completion_tokens ?? 0);
+  const totalTokens = Number(raw?.total_tokens ?? promptTokens + completionTokens);
+  return {
+    promptTokens: Number.isFinite(promptTokens) ? promptTokens : 0,
+    completionTokens: Number.isFinite(completionTokens) ? completionTokens : 0,
+    totalTokens: Number.isFinite(totalTokens) ? totalTokens : 0,
+  };
 }
 
 function asEntities(value: unknown): IntentResult["entities"] {

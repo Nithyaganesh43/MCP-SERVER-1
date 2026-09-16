@@ -26,4 +26,14 @@ services:
       - key: GOOGLE_CLIENT_SECRET
         sync: false
       - key: GOOGLE_CALLBACK_URL
+        value: https://rytham-mcp.onrender.com/api/google/callback
+      - key: CORS_ORIGINS
+        value: https://rytham-mcp.onrender.com
+      - key: DEEPSEEK_API_KEY
         sync: false
+      - key: DEEPSEEK_URL
+        value: https://api.deepseek.com/chat/completions
+      - key: DEEPSEEK_MODEL
+        value: deepseek-chat
+      - key: DEEPSEEK_TOKEN_BUDGET
+        value: "100000"

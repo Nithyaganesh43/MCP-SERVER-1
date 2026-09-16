@@ -165,6 +165,8 @@ Every software concern in the repository has exactly ONE primary owner. All othe
 | Database Indexes | `constants.ts` (`INDEXES`) | Mongoose schema index loops, `rules.md` section 7 |
 | Activity fields & types | `backend/model/activity.types.ts` | `activity.schema.ts`, `rules.md` section 7a |
 | User fields & types | `backend/model/user.types.ts` | `user.schema.ts`, `rules.md` section 7b |
+| Chat transcript fields | `backend/model/message.types.ts` | `message.schema.ts`, `rules.md` section 7f |
+| AI usage fields | `backend/model/usage.types.ts` | `usage.schema.ts`, `rules.md` section 7g |
 | Scheduling preference fields | `backend/model/scheduling-preference.types.ts` | `scheduling-preference.schema.ts`, `rules.md` section 7c |
 | Memory fields & categories | `backend/model/memory.types.ts` | `memory.schema.ts`, `rules.md` section 7d |
 | Conversation state fields | `backend/model/conversation-state.types.ts` | `conversation-state.schema.ts`, `rules.md` section 7e |
@@ -195,8 +197,8 @@ All Mongoose models use `strict: true`, omit `versionKey`, and enforce closed fi
   - `createdAt`, `updatedAt` (Mongoose timestamps)
 
 ## 7b. User Contract (`users` collection)
-- **Fields:** `googleId` (unique), `email`, `name`, `picture` (default `""`), `timezone` (set from `TIMEZONE` env on first login), `createdAt`, `updatedAt`.
-- **Security:** Identity is Google OAuth only. **Never store passwords or Google OAuth tokens** on the `User` document. Backend issues its own JWT.
+- **Fields:** `googleId` (unique), `email`, `name`, `picture` (default `""`), `timezone` (set from `TIMEZONE` env on first login), `apiKey` (unique, generated on first Google login), `createdAt`, `updatedAt`.
+- **Security:** Identity is Google OAuth. After Google signup, the backend issues a per-user `apiKey` for API-key login (`POST /auth/api-key`) and direct REST `Authorization: Bearer <apiKey>`. **Never store passwords or Google OAuth tokens** on the `User` document. Backend issues its own JWT.
 
 ## 7c. Scheduling Preference Contract (`scheduling_preferences` collection)
 - **Fields:** `userId: ObjectId`, `type: PreferenceType`, `value: object`, `timezone: string`, `createdAt`, `updatedAt`.
@@ -219,17 +221,31 @@ All Mongoose models use `strict: true`, omit `versionKey`, and enforce closed fi
 - **Fields:** `userId: ObjectId`, `mission: string` (default `""`), `context: string` (default `""`), `entities: object` (default `{}`), `updatedAt` (Mongoose timestamp).
 - **Constraint:** Unique index `{ userId: 1 }`. One document per user. Timestamp is `updatedAt` only.
 
+## 7f. Chat Message Contract (`messages` collection)
+- **Fields:** `_id: ObjectId`, `userId: ObjectId`, `role: "user" | "assistant"`, `content: string`, `createdAt`.
+- **Constraint:** One long conversation per user (no conversation id). Each user message is one turn: store the user line and the assistant reply. Conversation history is **never** sent to the AI.
+- **Index:** `{ userId: 1, createdAt: 1 }`.
+
+## 7g. Usage Contract (`usage` collection)
+- **Fields:** `_id: ObjectId`, `userId: ObjectId`, `requestCount: number`, `promptTokens: number`, `completionTokens: number`, `totalTokens: number`, `updatedAt`.
+- **Constraint:** Unique index `{ userId: 1 }`. One document per user. DeepSeek is skipped when `totalTokens` reaches `DEEPSEEK_TOKEN_BUDGET`.
+
 ---
 
 # 8. Model Context Protocol (MCP) & Authentication Rules
 
 - **Primary AI Interface:** MCP is the primary tool surface exposed to AI clients.
 - **Identity & Authorization:**
-  - `userId` MUST come strictly from the verified backend JWT (`sub` payload claim).
+  - `userId` MUST come strictly from the verified backend JWT (`sub` payload claim) or from the matching per-user `apiKey` presented as `Authorization: Bearer <apiKey>` on REST.
   - `userId` is **NEVER accepted from tool input arguments** or Cursor session parameters. Including `userId` in tool input triggers `VALIDATION_ERROR`.
-  - HTTP requests require header `Authorization: Bearer <JWT>` and header `X-MCP-API-Key` matching `MCP_API_KEY`.
+  - HTTP MCP requests require header `Authorization: Bearer <JWT>` and header `X-MCP-API-Key` matching `MCP_API_KEY`.
+  - REST client requests accept `Authorization: Bearer <JWT>` or `Authorization: Bearer <user apiKey>`.
   - Stdio transport loads `RYTHAM_JWT` from `backend/.env`.
+  - Browser Google OAuth uses `GET /api/google` → `GET /api/google/callback` and redirects to `/?token=<JWT>`. `GET /auth/google/callback` remains JSON for API clients.
 - **Error Envelopes:** Tool response envelopes are `{ success: true, data }` or `{ success: false, error: { code, message } }`. On failure, the SDK `CallTool` result MUST set `isError: true`.
+- **Client SPA:** Express serves `backend/web/dist` at `/`. Pages: Home (`/`), Chat (`/chat`), Usage (`/usage`).
+- **Client REST:** `POST /auth/api-key` `{ apiKey }` returns `{ token, user }`. `GET /chat/messages` returns the stored transcript. `GET /api/usage` returns DeepSeek token usage. `POST /chat` accepts one `{ message }` and does not receive conversation history.
+- **DeepSeek:** Optional `DEEPSEEK_API_KEY`, `DEEPSEEK_URL`, `DEEPSEEK_MODEL`. `DEEPSEEK_TOKEN_BUDGET` defaults to `100000`. Each completion sets `max_tokens` to `256`. When the user budget is exhausted, the heuristic reasoner is used.
 
 ---
 

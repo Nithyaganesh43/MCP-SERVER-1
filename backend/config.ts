@@ -1,4 +1,9 @@
 import dotenv from "dotenv";
+import {
+  DEFAULT_DEEPSEEK_MODEL,
+  DEFAULT_DEEPSEEK_TOKEN_BUDGET,
+  DEFAULT_DEEPSEEK_URL,
+} from "./model/constants";
 
 dotenv.config();
 
@@ -33,6 +38,10 @@ export type Config = {
   nodeEnv: string;
   corsOrigins: string[];
   mcpApiKey?: string;
+  deepseekApiKey?: string;
+  deepseekUrl?: string;
+  deepseekModel?: string;
+  deepseekTokenBudget?: number;
 };
 
 export function loadConfig(): Config {
@@ -50,5 +59,11 @@ export function loadConfig(): Config {
     nodeEnv,
     corsOrigins: parseCorsOrigins(process.env.CORS_ORIGINS, nodeEnv),
     mcpApiKey: process.env.MCP_API_KEY,
+    deepseekApiKey: process.env.DEEPSEEK_API_KEY,
+    deepseekUrl: process.env.DEEPSEEK_URL ?? DEFAULT_DEEPSEEK_URL,
+    deepseekModel: process.env.DEEPSEEK_MODEL ?? DEFAULT_DEEPSEEK_MODEL,
+    deepseekTokenBudget: Number(
+      process.env.DEEPSEEK_TOKEN_BUDGET ?? DEFAULT_DEEPSEEK_TOKEN_BUDGET,
+    ),
   };
 }

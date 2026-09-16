@@ -8,6 +8,7 @@ export interface User {
   name: string;
   picture: string;
   timezone: string;
+  apiKey: string;
   createdAt: Date;
   updatedAt: Date;
 }

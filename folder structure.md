@@ -86,7 +86,8 @@ PersonalAi/
 │       ├── 7_rytham-conversation-context.md
 │       ├── 8_composer-module5-collections.md
 │       ├── 9_verifier-verify-and-fix.md
-│       └── 10_orchestrator-karen-core.md
+│       ├── 10_orchestrator-karen-core.md
+│       └── 11_client-spa-auth-chat-usage.md
 └── backend/
     ├── package.json                  # Node.js dependencies & scripts
     ├── package-lock.json             # Lockfile
@@ -99,6 +100,7 @@ PersonalAi/
     ├── config.ts                     # Centralized env loader & config constants
     ├── db.ts                         # Mongoose connection & index sync helper
     ├── errors.ts                     # HttpError class definition
+    ├── web-static.ts                 # Serves backend/web/dist at `/` (SPA fallback)
     ├── MCP_DEPLOYMENT.md             # Remote Render MCP deployment notes
     ├── model/
     │   ├── index.ts                  # Barrel export for model types, schemas, & constants
@@ -113,13 +115,37 @@ PersonalAi/
     │   ├── memory.schema.ts          # Mongoose schema for memories collection
     │   ├── conversation-state.types.ts # ConversationState TypeScript interfaces
     │   ├── conversation-state.schema.ts # Mongoose schema for conversation_states
+    │   ├── message.types.ts          # Chat transcript TypeScript interfaces
+    │   ├── message.schema.ts         # Mongoose schema for messages collection
+    │   ├── usage.types.ts            # DeepSeek usage TypeScript interfaces
+    │   ├── usage.schema.ts           # Mongoose schema for usage collection
     │   ├── history.types.ts          # History TypeScript interfaces
     │   └── history.schema.ts         # Mongoose schema for histories collection
     ├── auth/
     │   ├── google.ts                 # Google OAuth client & auth code exchanger
     │   ├── jwt.ts                    # Backend JWT sign & verify utilities (sub = userId)
-    │   ├── middleware.ts             # Express Bearer JWT authentication middleware
-    │   └── http.ts                   # Auth REST endpoints (/auth/google, /auth/me, etc.)
+    │   ├── middleware.ts             # Bearer JWT or per-user API key authentication
+    │   └── http.ts                   # Auth REST (/auth/google, /api/google, /auth/api-key, /auth/me)
+    ├── chat/
+    │   └── service.ts                # Single long conversation transcript (append/list)
+    ├── usage/
+    │   ├── service.ts                # DeepSeek token usage snapshot & record
+    │   └── http.ts                   # GET /api/usage
+    ├── web/                          # React + Tailwind SPA (served by Express at /)
+    │   ├── vite.config.ts            # Vite build config (outDir web/dist)
+    │   ├── tailwind.config.js        # Tailwind content paths
+    │   ├── postcss.config.js         # PostCSS + Tailwind
+    │   ├── tsconfig.json             # Frontend TypeScript config
+    │   ├── index.html                # SPA shell
+    │   └── src/
+    │       ├── main.tsx              # React mount
+    │       ├── App.tsx               # Home / Chat / Usage router
+    │       ├── api.ts                # Browser API client (JWT or API key)
+    │       ├── index.css             # Tailwind + black page base
+    │       └── pages/
+    │           ├── Home.tsx          # Google OAuth, API-key login, profile, API key reveal
+    │           ├── Chat.tsx          # Single conversation, one message per send
+    │           └── Usage.tsx         # DeepSeek token usage
     ├── calendar/
     │   ├── contract.ts               # Tool I/O types, z parsers, update paths, REST mapping
     │   ├── service.ts                # CalendarService (create, update, delete, list, reschedule, etc.)
@@ -150,7 +176,7 @@ PersonalAi/
     ├── orchestrator/                 # AI Orchestrator (Karen Core) — built
     │   ├── index.ts                  # Pipeline handle(): Intent → Context → Plan → Execute → Reply
     │   ├── types.ts                  # Shared pipeline types
-    │   ├── http.ts                   # POST /chat (Bearer JWT → orchestrator.handle)
+    │   ├── http.ts                   # POST /chat + GET /chat/messages
     │   ├── context/
     │   ├── execution/
     │   ├── gateway/                  # Public execute(tool, payload) re-export
@@ -215,7 +241,9 @@ PersonalAi/
         ├── buffers.test.ts           # Meeting/travel buffer tests
         ├── undo.test.ts              # Atomic action undo tests
         ├── intelligence.test.ts      # Proactive capacity & missed rescue tests
-        ├── auth.test.ts              # Google OAuth & JWT route tests
+        ├── auth.test.ts              # Google OAuth, API key login, JWT route tests
+        ├── chat.test.ts              # Chat transcript persistence (history not sent to AI)
+        ├── usage.test.ts             # DeepSeek usage budget & GET /usage
         └── protected.test.ts         # Middleware auth protection tests
 ```
 
@@ -246,9 +274,10 @@ PersonalAi/
 
 ### `backend/` Root Files
 - **`backend/server.ts`:** Entry point for the backend. Loads environment variables, connects to MongoDB via `db.ts`, initializes Express routes (`auth`, `calendar`), initializes MCP handlers (`/mcp`), and starts the HTTP server.
-- **`backend/config.ts`:** Centralized configuration loader using `dotenv`. Exports application settings: `MONGODB_URI`, `PORT`, `TIMEZONE`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `MCP_API_KEY`, `CORS_ORIGINS`.
-- **`backend/db.ts`:** Mongoose connection manager. Connects to Atlas/local MongoDB and executes `syncIndexes()` on all models (`activities`, `users`, `scheduling_preferences`, `memories`, `conversation_states`).
-- **`backend/errors.ts`:** Defines custom `HttpError` class with status code support (e.g., 400, 401, 403, 404, 409).
+- **`backend/config.ts`:** Centralized configuration loader using `dotenv`. Exports application settings: `MONGODB_URI`, `PORT`, `TIMEZONE`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `MCP_API_KEY`, `CORS_ORIGINS`, `DEEPSEEK_API_KEY`, `DEEPSEEK_URL`, `DEEPSEEK_MODEL`, `DEEPSEEK_TOKEN_BUDGET`.
+- **`backend/db.ts`:** Mongoose connection manager. Connects to Atlas/local MongoDB and executes `syncIndexes()` on all models (`activities`, `users`, `scheduling_preferences`, `memories`, `conversation_states`, `messages`, `usage`).
+- **`backend/web-static.ts`:** Serves the built SPA from `web/dist` at `/` with fallback to `index.html` for non-API GET routes. No-ops when the frontend has not been built.
+- **`backend/errors.ts`:** Defines custom `HttpError` class with status code support (e.g. 400, 401, 403, 404, 409).
 - **`backend/MCP_DEPLOYMENT.md`:** Architectural notes and deployment documentation for Render remote MCP hosting.
 - **`backend/package.json`:** Defines dependencies (`express`, `mongoose`, `jsonwebtoken`, `google-auth-library`, `@modelcontextprotocol/sdk`, `zod`, `dotenv`) and npm scripts (`dev`, `build`, `start`, `test`, `typecheck`).
 - **`backend/tsconfig.json`:** TypeScript compiler configuration with `strict: true` enabled.
@@ -259,26 +288,41 @@ PersonalAi/
 - **`backend/model/constants.ts`:** Single Source of Truth for closed enums (`FLEXIBILITY`, `RECURRENCE_RULE`, `ACTIVITY_STATUS`, `PREFERENCE_TYPE`, `MEMORY_CATEGORY`), defaults, priority maps, and database index definitions (`INDEXES`).
 - **`backend/model/activity.types.ts`:** TypeScript interfaces for `Activity` document, schedule, behavior, recurrence, and reminders.
 - **`backend/model/activity.schema.ts`:** Mongoose schema for `activities` collection. Features `strict: true`, no `versionKey`, immutable fields, and compound indexes.
-- **`backend/model/user.types.ts`:** TypeScript interface for `User` document (Google OAuth user profile).
-- **`backend/model/user.schema.ts`:** Mongoose schema for `users` collection with unique index on `googleId`.
+- **`backend/model/user.types.ts`:** TypeScript interface for `User` document (Google OAuth user profile plus generated `apiKey`).
+- **`backend/model/user.schema.ts`:** Mongoose schema for `users` collection with unique indexes on `googleId` and `apiKey`. `generateUserApiKey()` default.
 - **`backend/model/scheduling-preference.types.ts`:** TypeScript interfaces for `SchedulingPreference` types, shapes (`sleep_window`, `learning_window`, `quiet_hours`, `commute`, `workload_limit`, `focus_duration`, `exam_planning`), and shape validators.
 - **`backend/model/scheduling-preference.schema.ts`:** Mongoose schema for `scheduling_preferences` with unique compound index `{ userId: 1, type: 1 }`.
 - **`backend/model/memory.types.ts`:** TypeScript interface for `Memory` document and 6 closed memory categories.
 - **`backend/model/memory.schema.ts`:** Mongoose schema for `memories` collection with index `{ userId: 1, category: 1 }`.
 - **`backend/model/conversation-state.types.ts`:** TypeScript interface for `ConversationState` document (mission, context, entities map).
 - **`backend/model/conversation-state.schema.ts`:** Mongoose schema for `conversation_states` collection with unique index `{ userId: 1 }` and `updatedAt` timestamp only.
+- **`backend/model/message.types.ts` & `message.schema.ts`:** Chat transcript (`messages` collection). One long conversation per user. History is stored here and never sent to DeepSeek.
+- **`backend/model/usage.types.ts` & `usage.schema.ts`:** Per-user DeepSeek token usage (`usage` collection). One document per user.
 - **`backend/model/history.types.ts` & `history.schema.ts`:** Interfaces and Mongoose schema for activity modification audit log.
 
 ### `backend/auth/` Directory (Authentication Layer)
 - **`backend/auth/google.ts`:** Google OAuth 2.0 client setup, URL generator, and code exchange for user profile.
 - **`backend/auth/jwt.ts`:** Backend JWT generator (`signToken`) and verification (`verifyToken`). Embeds `{ sub: userId, email, name }`.
-- **`backend/auth/middleware.ts`:** Express authentication middleware enforcing `Authorization: Bearer <JWT>` header on protected routes.
-- **`backend/auth/http.ts`:** Authentication REST endpoint router handling `/auth/google`, `/auth/google/callback`, `/auth/logout`, `/auth/me`.
+- **`backend/auth/middleware.ts`:** Express authentication middleware. Accepts `Authorization: Bearer <JWT>` or `Authorization: Bearer <user apiKey>`.
+- **`backend/auth/http.ts`:** Authentication REST router: `/auth/google`, `/api/google`, `/auth/google/callback` (JSON), `/api/google/callback` (redirect `/?token=`), `/auth/api-key`, `/auth/logout`, `/auth/me`.
+
+### `backend/chat/` Directory
+- **`backend/chat/service.ts`:** Appends one user message and one assistant reply per turn. Lists the user's single conversation in chronological order.
+
+### `backend/usage/` Directory
+- **`backend/usage/service.ts`:** Token usage snapshot and increment. Remaining tokens = `DEEPSEEK_TOKEN_BUDGET - totalTokens`.
+- **`backend/usage/http.ts`:** `GET /api/usage` for the signed-in user.
+
+### `backend/web/` Directory (Client SPA)
+- Black, functional React + Tailwind UI served by Express after `npm run build`.
+- **Home:** Google sign-in, API-key login, profile, API key hidden by default.
+- **Chat:** One message in, one action/reply. Transcript loaded from DB.
+- **Usage:** DeepSeek request and token counts.
 
 ### `backend/calendar/` Directory (Calendar Domain Core)
 - **`backend/calendar/contract.ts`:** Tool input/output TypeScript definitions, Zod validation parsers, allowed update path whitelist (`ALLOWED_UPDATE_PATHS`), and REST-to-Tool mappings for 8 core calendar tools.
 - **`backend/calendar/service.ts`:** `CalendarService` class containing core business logic for calendar activities (`create`, `update`, `delete`, `list`, `complete`, `reschedule`, `conflicts`, `suggestSlot`). Accepts `userId` in constructor.
-- **`backend/calendar/http.ts`:** REST transport layer translating Express HTTP requests into `CalendarService` method calls. Mounts `POST /chat` via `mountOrchestrator`.
+- **`backend/calendar/http.ts`:** REST transport layer translating Express HTTP requests into `CalendarService` method calls. Mounts `POST /chat`, `GET /chat/messages`, `GET /api/usage`, and the SPA.
 - **`backend/calendar/time.ts`:** Zoned date arithmetic, day/week/month ISO window calculation, gap detection, and floating task gap reservation packing.
 - **`backend/calendar/recurrence.ts`:** In-memory recurrence rule parser expanding daily, weekly, monthly, and yearly recurring series within query windows without persisting extra document instances.
 
@@ -302,7 +346,7 @@ PersonalAi/
 ### `backend/orchestrator/` Directory (AI Orchestrator / Karen Core — built)
 - **`backend/orchestrator/index.ts`:** `handle(request)` runs User → Intent → Context → Planner → Execute → Response. All tools go through `McpGateway.execute(tool, payload)`.
 - **`backend/orchestrator/types.ts`:** Pipeline types (`IntentResult`, `ExecutionPlan`, `OrchestratorRequest`).
-- **`backend/orchestrator/http.ts`:** `POST /chat` with Bearer JWT. Body `{ message }`. Response `{ reply, clarification, executed }`.
+- **`backend/orchestrator/http.ts`:** `POST /chat` with Bearer JWT or user API key. Body `{ message }` only (no history). Persists the turn in `messages`. `GET /chat/messages` returns the stored transcript. Response `{ reply, clarification, executed }`.
 - **`backend/orchestrator/intent/`:** Intent classification and entity extraction. Never executes tools.
 - **`backend/orchestrator/context/`:** Resolves `it` / `that meeting` via `conversation.context`.
 - **`backend/orchestrator/planner/`:** Builds a registered-tool chain. Routes scheduling config to `calendar.preferences.*` and personal knowledge to `memory.*`.
@@ -310,7 +354,7 @@ PersonalAi/
 - **`backend/orchestrator/personality/`:** Karen replies: warm, polite, calm. Never exposes tool names. Never fabricates success.
 - **`backend/orchestrator/gateway/`:** Public `execute(tool, payload)` / `McpGateway` re-export.
 - **`backend/orchestrator/mcp/`:** Hosted MCP client (`https://rytham-mcp.onrender.com/mcp` by default). Attaches `X-MCP-API-Key` and `Authorization: Bearer <JWT>`. Recovers Streamable HTTP sessions.
-- **`backend/orchestrator/providers/`:** DeepSeek reasoning (optional `DEEPSEEK_API_KEY`) with heuristic fallback. DeepSeek never calls MCP.
+- **`backend/orchestrator/providers/`:** DeepSeek reasoning (optional `DEEPSEEK_API_KEY`) with heuristic fallback. DeepSeek never calls MCP. Each completion sends only the current system+user pair (`max_tokens` 256). Skipped when the user's token budget is exhausted.
 
 ### `backend/mcp/` Directory (Model Context Protocol Layer)
 - **`backend/mcp/manifest.ts`:** MCP tool manifest definitions, input schemas, response envelope shapes (`{ success, data }` or `{ success: false, error }`).
@@ -333,4 +377,4 @@ PersonalAi/
   - `app.ts` — Creates Supertest Express test app instance.
   - `auth.ts` — Generates valid, expired, and invalid test JWT tokens.
   - `mcpHttp.ts` — Supertest helper for testing Streamable HTTP MCP sessions.
-- **33 Test Suites (`*.test.ts`):** Complete automated regression coverage across authentication, authorization, activity CRUD operations, recurrence expansion, reminder parsing, timezone accuracy, optimistic concurrency locking, multi-tenant security isolation, performance benchmarks (1,000 items under 500ms), calendar intelligence preferences, Karen memory CRUD, conversation state tracking, reflection insights, MCP HTTP/stdio session transport, MCP Gateway, and the AI Orchestrator pipeline (`POST /chat`). 257 tests.
+- **35 Test Suites (`*.test.ts`):** Complete automated regression coverage across authentication (Google OAuth, per-user API key, JWT), authorization, activity CRUD operations, recurrence expansion, reminder parsing, timezone accuracy, optimistic concurrency locking, multi-tenant security isolation, performance benchmarks (1,000 items under 500ms), calendar intelligence preferences, Karen memory CRUD, conversation state tracking, chat transcript persistence, DeepSeek usage budget, reflection insights, MCP HTTP/stdio session transport, MCP Gateway, and the AI Orchestrator pipeline (`POST /chat`). 273 tests.

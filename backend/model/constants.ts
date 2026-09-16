@@ -8,6 +8,8 @@ export const COLLECTION_ACTIVITY_HISTORIES = "activity_histories" as const;
 export const COLLECTION_SCHEDULING_PREFERENCES = "scheduling_preferences" as const;
 export const COLLECTION_MEMORIES = "memories" as const;
 export const COLLECTION_CONVERSATION_STATES = "conversation_states" as const;
+export const COLLECTION_MESSAGES = "messages" as const;
+export const COLLECTION_USAGE = "usage" as const;
 
 export const FLEXIBILITY = ["fixed", "moveable", "floating"] as const;
 export type Flexibility = (typeof FLEXIBILITY)[number];
@@ -110,6 +112,18 @@ export const DEFAULT_CONVERSATION_MISSION = "";
 export const DEFAULT_CONVERSATION_CONTEXT = "";
 export const DEFAULT_CONVERSATION_ENTITIES: Record<string, never> = {};
 
+export const MESSAGE_ROLE = ["user", "assistant"] as const;
+export type MessageRole = (typeof MESSAGE_ROLE)[number];
+
+export const DEFAULT_USAGE_REQUEST_COUNT = 0;
+export const DEFAULT_USAGE_PROMPT_TOKENS = 0;
+export const DEFAULT_USAGE_COMPLETION_TOKENS = 0;
+export const DEFAULT_USAGE_TOTAL_TOKENS = 0;
+export const DEFAULT_DEEPSEEK_URL = "https://api.deepseek.com/chat/completions";
+export const DEFAULT_DEEPSEEK_MODEL = "deepseek-chat";
+export const DEFAULT_DEEPSEEK_TOKEN_BUDGET = 100_000;
+export const DEEPSEEK_MAX_TOKENS = 256;
+
 export const INDEXES = [
   { userId: 1, "schedule.startAt": 1 },
   { userId: 1, status: 1 },
@@ -122,3 +136,7 @@ export const INDEXES_SCHEDULING_PREFERENCES = [{ userId: 1, type: 1 }] as const;
 export const INDEXES_MEMORIES = [{ userId: 1, category: 1 }] as const;
 
 export const INDEXES_CONVERSATION_STATES = [{ userId: 1 }] as const;
+
+export const INDEXES_MESSAGES = [{ userId: 1, createdAt: 1 }] as const;
+
+export const INDEXES_USAGE = [{ userId: 1 }] as const;

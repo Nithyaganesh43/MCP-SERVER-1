@@ -1,9 +1,11 @@
 import mongoose from "mongoose";
 import {
   ActivityModel,
+  ChatMessageModel,
   ConversationStateModel,
   MemoryModel,
   SchedulingPreferenceModel,
+  UsageModel,
   UserModel,
 } from "./model/index";
 
@@ -15,4 +17,6 @@ export async function connectDb(uri: string): Promise<void> {
   await SchedulingPreferenceModel.syncIndexes();
   await MemoryModel.syncIndexes();
   await ConversationStateModel.syncIndexes();
+  await ChatMessageModel.syncIndexes();
+  await UsageModel.syncIndexes();
 }

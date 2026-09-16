@@ -4,7 +4,7 @@ import { McpGateway } from "./gateway";
 import { classifyIntent } from "./intent";
 import { formatReply } from "./personality";
 import { createPlan } from "./planner";
-import { createReasoner } from "./providers";
+import { createReasonerForUser } from "./providers";
 import type {
   ExecutionResult,
   GatewayLike,
@@ -29,7 +29,7 @@ export async function handle(
   deps: OrchestratorDeps = {},
 ): Promise<OrchestratorResponse> {
   const gateway = deps.gateway ?? new McpGateway({ jwt: request.jwt });
-  const reasoner = deps.reasoner ?? createReasoner();
+  const reasoner = deps.reasoner ?? (await createReasonerForUser(request.userId));
   const now = request.now ?? new Date();
 
   let intent: IntentResult;

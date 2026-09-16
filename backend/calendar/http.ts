@@ -28,6 +28,8 @@ import {
 } from "./contract";
 import { CalendarService } from "./service";
 import { mountOrchestrator } from "../orchestrator/http";
+import { mountUsage } from "../usage/http";
+import { mountWeb } from "../web-static";
 
 function wrap(
   handler: (req: Request, res: Response) => Promise<void>,
@@ -238,6 +240,8 @@ export function createApp(config: Config): express.Express {
   );
 
   mountOrchestrator(app, config);
+  mountUsage(app, config);
+  mountWeb(app);
 
   const errors: ErrorRequestHandler = (err, _req, res, _next) => {
     if (err instanceof HttpError) {

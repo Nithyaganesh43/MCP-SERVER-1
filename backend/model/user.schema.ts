@@ -1,6 +1,11 @@
+import { randomBytes } from "node:crypto";
 import { Schema, model, type Model } from "mongoose";
 import type { User } from "./user.types";
 import { COLLECTION_USERS } from "./constants";
+
+export function generateUserApiKey(): string {
+  return `ry_${randomBytes(24).toString("hex")}`;
+}
 
 export const UserSchema = new Schema<User>(
   {
@@ -9,6 +14,7 @@ export const UserSchema = new Schema<User>(
     name: { type: String, required: true },
     picture: { type: String, required: true, default: "" },
     timezone: { type: String, required: true },
+    apiKey: { type: String, required: true, unique: true, default: generateUserApiKey },
   },
   {
     collection: COLLECTION_USERS,
