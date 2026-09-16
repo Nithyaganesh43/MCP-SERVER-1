@@ -52,8 +52,23 @@ export async function findOrCreateUser(
   profile: GoogleProfile,
   timezone: string,
 ): Promise<User> {
-  const existing = await UserModel.findOne({ googleId: profile.googleId });
+  const existing = await UserModel.findOne({
+    $or: [{ googleId: profile.googleId }, { email: profile.email }],
+  });
   if (existing) {
+    if (existing.googleId !== profile.googleId) {
+      existing.googleId = profile.googleId;
+      await UserModel.updateOne(
+        { _id: existing._id },
+        {
+          $set: {
+            googleId: profile.googleId,
+            ...(profile.name ? { name: profile.name } : {}),
+            ...(profile.picture ? { picture: profile.picture } : {}),
+          },
+        },
+      );
+    }
     return ensureApiKey(existing);
   }
   return UserModel.create({
@@ -164,6 +179,23 @@ export function mountAuth(app: Express, config: Config): void {
       }
       const withKey = await ensureApiKey(user);
       res.json(toUserView(withKey));
+    }),
+  );
+
+  app.post(
+    "/auth/regenerate-api-key",
+    auth,
+    wrap(async (req, res) => {
+      const newApiKey = generateUserApiKey();
+      const updated = await UserModel.findByIdAndUpdate(
+        req.user?.id,
+        { $set: { apiKey: newApiKey } },
+        { new: true },
+      );
+      if (!updated) {
+        throw new HttpError(401, "Unauthorized");
+      }
+      res.json(toUserView(updated));
     }),
   );
 }

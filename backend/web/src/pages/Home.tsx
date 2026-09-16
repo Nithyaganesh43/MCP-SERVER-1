@@ -54,7 +54,7 @@ export function HomePage({ user, error, onLogin, onLogout, onError }: Props) {
         <h1>Home</h1>
         {error ? <p>{error}</p> : null}
         <a className="w-fit border border-white px-2 py-1" href="/api/google">
-          Sign in with Google
+          Sign in / Sign up with Google
         </a>
         <form className="flex flex-col gap-2" onSubmit={(event) => void handleApiLogin(event)}>
           <label>

@@ -179,4 +179,14 @@ describe("Auth Tests", () => {
     expect(resRoot.status).toBe(302);
     expect(resRoot.headers.location).toContain("accounts.google.com");
   });
+
+  it("should regenerate a user API key via POST /auth/regenerate-api-key", async () => {
+    const user = await seedTestUser();
+    const oldKey = user.apiKey;
+    const res = await request(app).post("/auth/regenerate-api-key").set(authHeader(validJwt()));
+
+    expect(res.status).toBe(200);
+    expect(res.body.apiKey).not.toBe(oldKey);
+    expect(res.body.apiKey.startsWith("ry_")).toBe(true);
+  });
 });
