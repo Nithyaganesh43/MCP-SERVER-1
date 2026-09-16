@@ -1,6 +1,6 @@
 # Karen Module (Rytham V1) — Plan B
 
-**Status:** specified. Persistence collections built. MCP modules exist in `backend/`; Orchestrator not coded.
+**Status:** Persistence collections built. MCP modules exist in `backend/`. Orchestrator (Karen Core) is built.
 
 **Version:** V1.0
 
@@ -8,7 +8,8 @@
 
 **Rule:** this file is the authoritative specification for Karen Module and Calendar Intelligence. Approved decisions are complete here. Implementing agents follow `agent.md` Multi-Agent Completion Contract: infer missing implementation details consistently from existing architecture and document them in the same task.
 
-Implemented contracts for built code live in `agent.md`. The AI Orchestrator specification lives in `plan.md`. Persistence collections `scheduling_preferences`, `memories`, and `conversation_states` are built. Calendar Intelligence, Memory, Reflection, and Conversation MCP tools exist in `backend/`; the Orchestrator is not coded. Tool I/O, ownership, sequences, and permissions remain defined in this file.
+Implemented contracts for built code live in `agent.md`. The AI Orchestrator specification lives in `plan.md`. Persistence collections `scheduling_preferences`, `memories`, and `conversation_states` are built. MCP modules exist under `backend/modules/` adhering to the locked modular contract (`tools.ts`, `prompts.ts`, `types.ts`, `index.ts`) registered via `backend/registry/modules.ts`. Tool I/O, ownership, sequences, and permissions remain defined in this file.
+
 
 **Build order:** MCP tools first. The existing 8 `calendar.*` tools remain unchanged. Build the 19 new tools in section 6 when the user asks for implementation.
 
@@ -88,7 +89,7 @@ Product planner rules (AI layer, not coded as auto-reschedule):
 
 Activity `status` values: `pending`, `done`, `missed`, `cancelled`.
 
-### 2.4 AI Orchestrator (specified in `plan.md`; not coded)
+### 2.4 AI Orchestrator (specified in `plan.md`; built)
 
 When the orchestrator is built: it talks **only to MCP**. It never talks to MongoDB or REST. It uses the backend JWT (via MCP context), never a Google access token.
 
@@ -127,12 +128,9 @@ Orchestrator memory routing (`plan.md`):
 
 Personal knowledge uses Memory MCP (`memory.*`). Scheduling configuration uses `calendar.preferences.*` (section 6.4). Collections in section 19 are built (`agent.md` sections 7c–7e).
 
-### 2.5 Not built (from `agent.md` / `plan.md`)
+### 2.5 Not built (from `plan.md`)
 
-- AI Orchestrator (`plan.md`; not coded)
-- Karen Module (this file; not coded)
-- Calendar Intelligence Held Module (this file; not coded)
-- Notifications, memories
+- Notifications
 - UI
 - `POST /auth/refresh`
 - Notes, Finance, GitHub, Email tools
@@ -150,7 +148,7 @@ Personal knowledge uses Memory MCP (`memory.*`). Scheduling configuration uses `
 
 ## 3. Module placement (with AI Orchestrator)
 
-Two planned MCP modules sit with the AI Orchestrator specified in `plan.md`. The orchestrator is not coded. Persistence for Karen and Calendar Intelligence is built. MCP tools for those modules exist in `backend/` (see `agent.md`).
+Two MCP modules sit with the AI Orchestrator specified in `plan.md`. The orchestrator is built (`backend/orchestrator/`, `POST /chat`). Persistence for Karen and Calendar Intelligence is built. MCP tools for those modules exist in `backend/`.
 
 The orchestrator talks only to MCP. It may call:
 
@@ -561,7 +559,7 @@ All highest priority for implementation of this plan.
 - Reuse `CalendarService`. Do not duplicate calendar logic.
 - Do not add `activity_instances` or `notifications` schemas unless the user asks. `scheduling_preferences`, `memories`, and `conversation_states` are built (`agent.md` sections 7c–7e).
 - `metadata` on activities is reserved for later modules. Do not read it in scheduling logic.
-- When the AI Orchestrator is built: follow `plan.md`. Talk to MCP tools only, not REST or MongoDB. Do not change the existing 8 `calendar.*` tool I/O or the activities schema.
+- The AI Orchestrator is built: follow `plan.md`. Talk to MCP tools only, not REST or MongoDB. Do not change the existing 8 `calendar.*` tool I/O or the activities schema.
 - First implementation, when asked, is driven by MCP tools: the 19 new tools in section 6.
 - Ownership (section 6.4): `calendar.preferences.*` owns scheduling configuration; `memory.*` owns personal knowledge. Do not store a second copy.
 - Tool I/O, persistence, permissions, and layout: sections 18–20.
@@ -583,7 +581,7 @@ Model/provider choice and personality system prompt text are implementation choi
 
 ## 17. Implementation status
 
-Persistence collections `scheduling_preferences`, `memories`, and `conversation_states` are built. Implemented contracts live in `agent.md` sections 7c–7e. Calendar Intelligence, Memory, Reflection, and Conversation MCP tools exist in `backend/` (see `agent.md` Current state). The AI Orchestrator is not coded.
+Persistence collections `scheduling_preferences`, `memories`, and `conversation_states` are built. Calendar Intelligence, Memory, Reflection, and Conversation MCP tools exist in `backend/`. The AI Orchestrator is built (`backend/orchestrator/`, `POST /chat`).
 
 The existing 8 `calendar.*` tools stay unchanged.
 

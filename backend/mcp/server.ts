@@ -14,11 +14,7 @@ import dotenv from "dotenv";
 import { connectDb } from "../db";
 import { createUserContext, CreateContextOptions } from "./context";
 import { handleMcpError } from "./errors";
-import { registerCalendarModule } from "./modules/calendar";
-import { registerCalendarIntelligenceModule } from "./modules/calendar-intelligence";
-import { registerMemoryModule } from "./modules/memory";
-import { registerReflectionModule } from "./modules/reflection";
-import { registerConversationModule } from "./modules/conversation";
+import modules from "../registry/modules";
 import { ToolRegistry } from "./registry";
 import { executeToolCall } from "./transport";
 import { startTimer } from "./logger";
@@ -27,7 +23,7 @@ import { ToolManifest, ToolResponseEnvelope, UserContext } from "./manifest";
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
 
 export class McpServer {
-  private readonly registry: ToolRegistry;
+  public readonly registry: ToolRegistry;
 
   constructor(registry: ToolRegistry = ToolRegistry.getInstance()) {
     this.registry = registry;
@@ -66,13 +62,16 @@ export class McpServer {
 
 export function createMcpServer(): McpServer {
   const server = new McpServer();
-  server.registerModule(registerCalendarModule);
-  server.registerModule(registerCalendarIntelligenceModule);
-  server.registerModule(registerMemoryModule);
-  server.registerModule(registerReflectionModule);
-  server.registerModule(registerConversationModule);
+  for (const mod of modules) {
+    if (mod.tools && Array.isArray(mod.tools)) {
+      for (const tool of mod.tools) {
+        server.registry.registerTool(tool);
+      }
+    }
+  }
   return server;
 }
+
 
 export const MCP_CAPABILITIES = {
   tools: {},

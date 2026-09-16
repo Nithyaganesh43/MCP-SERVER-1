@@ -1,14 +1,222 @@
 # Rytham docs
 
-Implemented contracts for built code live in `agent.md`. This file is the **AI Orchestrator specification (V2)**. Orchestrator code is not built yet; behavior is fully specified here.
+Implemented contracts for built code live in `rules.md` and `folder structure.md`. This file is the **AI Orchestrator specification (V2)**. Orchestrator code is built (`backend/orchestrator/`).
 
-This file defines how the AI Orchestrator coordinates MCP modules. Storage and tool I/O for Karen and Calendar Intelligence are defined in `plan b.md` sections 18–20.
+This file defines how the AI Orchestrator coordinates MCP modules. Storage and tool I/O for Karen and Calendar Intelligence are defined in `plan-b.md` sections 18–20.
 
-Karen Module and Calendar Intelligence live in `plan b.md`. Backend code is not built yet. First implementation is MCP tools. The existing 8 `calendar.*` tools stay unchanged.
+Karen Module and Calendar Intelligence live in `plan-b.md`. Their MCP tools are built. The existing 8 `calendar.*` tools stay unchanged.
 
 Ownership of scheduling configuration vs personal knowledge is specified in `plan b.md` section 6.4. This file only describes how the Orchestrator must respect that split. Do not invent a second copy.
 
 ---
+
+# Rytham Architecture Principles (Locked)
+
+Goal: Every new service should feel like plug in → register → use, while keeping the codebase small, readable, and easy to debug.
+
+## Core Principles
+
+* One responsibility per module.
+* No over-engineering.
+* Convention over configuration.
+* One source of truth for every piece of data.
+* Adding a new service should require touching only its own folder plus one registration file.
+
+# Folder Structure
+
+```
+backend/
+├── orchestrator/
+│   ├── gateway/
+│   ├── intent/
+│   ├── context/
+│   ├── planner/
+│   ├── execution/
+│   ├── personality/
+│   ├── providers/
+│   ├── mcp/
+│   ├── types.ts
+│   ├── http.ts
+│   └── index.ts
+│
+├── modules/
+│   ├── calendar/
+│   ├── calendar-intelligence/
+│   ├── memory/
+│   ├── reflection/
+│   ├── conversation/
+│   ├── github/
+│   ├── notes/
+│   └── email/
+│
+├── registry/
+│   └── modules.ts
+│
+└── mcp/
+```
+
+The Orchestrator should never know how a module works internally.
+
+# Module Contract
+
+Every module follows exactly the same shape.
+
+```
+modules/calendar/
+├── tools.ts
+├── prompts.ts
+├── types.ts
+└── index.ts
+```
+
+Future modules look identical:
+
+```
+modules/github/
+├── tools.ts
+├── prompts.ts
+├── types.ts
+└── index.ts
+```
+
+No custom structure per module.
+
+# Registration Pattern
+
+Every module exports one object.
+
+```typescript
+export default {
+  name: "calendar",
+  tools: [...]
+}
+```
+
+Then register once in `registry/modules.ts`:
+
+```typescript
+export default [
+  calendar,
+  memory,
+  reflection,
+  conversation
+]
+```
+
+Adding GitHub becomes:
+
+```typescript
+import github from "../modules/github"
+
+modules.push(github)
+```
+
+Nothing else changes.
+
+# Orchestrator Pipeline
+
+Keep only five internal steps.
+
+```
+User
+ ↓
+Intent
+ ↓
+Context
+ ↓
+Planner
+ ↓
+Execute
+ ↓
+Response
+```
+
+Never add module-specific logic here.
+
+# Planner Rule
+
+The Planner doesn't know Calendar.
+
+It only knows:
+
+```
+calendar.create
+memory.save
+reflection.weekly
+github.issue.create
+```
+
+They're just registered tools.
+
+# MCP Gateway Rule
+
+One function.
+
+```typescript
+execute(tool, payload)
+```
+
+Everything goes through it.
+
+No direct HTTP calls anywhere else.
+
+# Module Independence
+
+Each module owns:
+
+* MCP tool names
+* validation
+* types
+* prompts
+* tests
+
+The Orchestrator only asks:
+
+> "Which tool should I execute?"
+
+# Future Module Example
+
+Adding Email should require roughly this:
+
+```
+Create folder
+Export tools
+Register module
+Done
+```
+
+No Planner rewrite.
+No Gateway rewrite.
+No Context rewrite.
+
+# What NOT to build
+
+* Plugin loaders
+* Dynamic imports everywhere
+* Event buses
+* CQRS
+* Microservices
+* Dependency injection frameworks
+* Generic factories for everything
+
+Those add complexity without helping a personal product.
+
+# Scaling Rule (The 2–3 File Rule)
+
+Every new service should satisfy this checklist:
+
+* New folder inside `modules/`
+* `tools.ts`
+* `types.ts`
+* `index.ts`
+* Register in `registry/modules.ts`
+* Tests inside the module
+* No changes to existing modules
+
+If adding a new service requires editing more than 2–3 existing files, the architecture should be refactored before continuing.
+
+---
+
 
 ## Locked (built)
 
@@ -31,11 +239,9 @@ Freeze: do not change the existing 8 `calendar.*` tools' public I/O without a ve
 
 ---
 
-## Specified, backend not built
+## Built (orchestrator coordinates these MCP modules)
 
-### Core (orchestrator coordinates these MCP modules)
-
-- AI Orchestrator
+- AI Orchestrator (`backend/orchestrator/`, `POST /chat`)
 - Karen Module (Memory, Reflection, Conversation)
 - Calendar Intelligence
 
@@ -57,9 +263,9 @@ The orchestrator talks **only to MCP**. It never talks to MongoDB or REST.
 
 # Rytham AI Orchestrator Specification (V2)
 
-**Status: specified. Code not built.**
+**Status: implemented (Karen Core V1.0).**
 
-The Orchestrator coordinates multiple MCP modules. Calendar MCP is built. Karen, Calendar Intelligence, Reflection, and Conversation MCP are specified in `plan b.md` and not built yet.
+The Orchestrator coordinates multiple MCP modules. Calendar, Calendar Intelligence, Karen Memory, Reflection, and Conversation MCP are built. Entry points: `handle()` in `backend/orchestrator/index.ts` and `POST /chat`.
 
 ## Architecture
 
@@ -89,20 +295,20 @@ The Orchestrator is designed to coordinate multiple MCP modules. It should autom
 | Module | Status |
 | --- | --- |
 | Calendar | Built |
-| Calendar Intelligence | Planned |
-| Karen Memory | Planned |
-| Reflection | Planned |
-| Conversation | Planned |
+| Calendar Intelligence | Built |
+| Karen Memory | Built |
+| Reflection | Built |
+| Conversation | Built |
 
 MCP inventory the orchestrator uses (existing 8 `calendar.*` I/O in `agent.md`; new tool I/O in `plan b.md` section 18):
 
 | Module | Tools | Count |
 | --- | --- | --- |
 | Existing Calendar (built) | `calendar.create`, `calendar.update`, `calendar.delete`, `calendar.list`, `calendar.complete`, `calendar.reschedule`, `calendar.conflicts`, `calendar.suggest_slot` | 8 |
-| Calendar Intelligence (planned) | `calendar.preferences.save`, `calendar.preferences.get`, `calendar.preferences.update`, `calendar.preferences.delete`, `calendar.capacity.check`, `calendar.missed.review`, `calendar.split_task`, `calendar.preview` | 8 |
-| Karen Memory (planned) | `memory.save`, `memory.search`, `memory.update`, `memory.delete`, `memory.list` | 5 |
-| Reflection (planned) | `reflection.daily`, `reflection.weekly`, `reflection.monthly` | 3 |
-| Conversation (planned) | `conversation.state`, `conversation.context`, `conversation.clear` | 3 |
+| Calendar Intelligence (built) | `calendar.preferences.save`, `calendar.preferences.get`, `calendar.preferences.update`, `calendar.preferences.delete`, `calendar.capacity.check`, `calendar.missed.review`, `calendar.split_task`, `calendar.preview` | 8 |
+| Karen Memory (built) | `memory.save`, `memory.search`, `memory.update`, `memory.delete`, `memory.list` | 5 |
+| Reflection (built) | `reflection.daily`, `reflection.weekly`, `reflection.monthly` | 3 |
+| Conversation (built) | `conversation.state`, `conversation.context`, `conversation.clear` | 3 |
 
 Total new MCP tools: 19. Full purposes, ownership, I/O, sequences, persistence, and permissions: `plan b.md`. Existing Calendar tool names and I/O are owned by `backend/calendar/contract.ts` (`agent.md` sections 15–16).
 
@@ -111,6 +317,8 @@ Total new MCP tools: 19. Full purposes, ownership, I/O, sequences, persistence, 
 ## Request Pipeline
 
 Every request follows the same lifecycle.
+
+Transport: `POST /chat` with `Authorization: Bearer <JWT>` and `{ "message": "..." }`. Response: `{ reply, clarification, executed }`. The React Native client talks only to this endpoint. The Orchestrator talks only to MCP through `mcpGateway.execute(tool, payload)`.
 
 1. User input
 2. Intent classification

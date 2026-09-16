@@ -48,6 +48,7 @@ describe("MCP Gateway", () => {
       expect(options.method).toBe("POST");
       expect(options.headers["x-mcp-api-key"]).toBe("my-test-key");
       expect(options.headers["x-api-key"]).toBe("my-test-key");
+      expect(options.headers.Accept).toContain("application/json");
       expect(JSON.parse(options.body)).toEqual({
         jsonrpc: "2.0",
         method: "tools/call",
@@ -58,6 +59,24 @@ describe("MCP Gateway", () => {
         id: expect.any(String),
       });
       expect(response.result).toBeDefined();
+    });
+
+    it("attaches Authorization when a JWT is provided", async () => {
+      const mockFetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          jsonrpc: "2.0",
+          result: { content: [{ type: "text", text: JSON.stringify({ success: true }) }] },
+          id: "req-jwt",
+        }),
+      });
+      global.fetch = mockFetch as unknown as typeof fetch;
+
+      const client = new McpClient({ jwt: "user-jwt-token" });
+      await client.sendToolCall("calendar.list", { range: "day" });
+
+      const options = mockFetch.mock.calls[0][1] as { headers: Record<string, string> };
+      expect(options.headers.Authorization).toBe("Bearer user-jwt-token");
     });
 
     it("throws MCPTimeoutError when request aborts due to timeout", async () => {
@@ -194,6 +213,48 @@ describe("MCP Gateway", () => {
 
       const result = await mcpGateway.execute("calendar.create", { event: "Meeting" });
       expect(result.success).toBe(true);
+    });
+
+    it("initializes a Streamable HTTP session after a session-required error", async () => {
+      const mockFetch = jest
+        .fn()
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 400,
+          statusText: "Bad Request",
+          text: async () => "Bad Request: Session ID required",
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          headers: {
+            get: (name: string) =>
+              name.toLowerCase() === "mcp-session-id" ? "sess-orchestrator-1" : null,
+          },
+          json: async () => ({ jsonrpc: "2.0", result: { protocolVersion: "2025-03-26" }, id: "init" }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({}),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            jsonrpc: "2.0",
+            result: {
+              content: [{ type: "text", text: JSON.stringify({ success: true, data: { ok: true } }) }],
+            },
+            id: "call",
+          }),
+        });
+      global.fetch = mockFetch as unknown as typeof fetch;
+
+      const gateway = new McpGateway();
+      const result = await gateway.execute("calendar.list", { range: "day" });
+      expect(result.success).toBe(true);
+      expect(mockFetch).toHaveBeenCalledTimes(4);
+      const toolCall = mockFetch.mock.calls[3][1] as { headers: Record<string, string>; body: string };
+      expect(toolCall.headers["Mcp-Session-Id"]).toBe("sess-orchestrator-1");
+      expect(JSON.parse(toolCall.body).method).toBe("tools/call");
     });
   });
 });

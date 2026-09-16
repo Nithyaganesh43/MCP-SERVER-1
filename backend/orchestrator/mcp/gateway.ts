@@ -1,4 +1,4 @@
-import { McpClient } from "./client";
+import { isMcpSessionError, McpClient } from "./client";
 import {
   GatewayError,
   MCPConnectionError,
@@ -26,6 +26,7 @@ export class McpGateway {
 
     let attempts = 0;
     let lastError: unknown;
+    let recoveredSession = false;
 
     while (attempts <= this.maxRetries) {
       if (attempts > 0) {
@@ -38,10 +39,16 @@ export class McpGateway {
         const duration = Date.now() - startTime;
         console.log(`[MCP] Success (${duration}ms)`);
         return result;
-      } catch (err: any) {
+      } catch (err: unknown) {
         lastError = err;
 
-        // Retry only on temporary failures (ConnectionError or TimeoutError)
+        if (!recoveredSession && isMcpSessionError(err)) {
+          recoveredSession = true;
+          this.client.clearSession();
+          await this.client.initializeSession();
+          continue;
+        }
+
         const isTemporaryError =
           err instanceof MCPConnectionError || err instanceof MCPTimeoutError;
 
@@ -50,15 +57,12 @@ export class McpGateway {
           continue;
         }
 
-        // Non-temporary or retries exhausted
         console.log("[MCP] Failed");
         if (err instanceof GatewayError) {
           throw err;
         }
-        throw new MCPExecutionError(
-          `MCP tool execution failed: ${err?.message || String(err)}`,
-          tool,
-        );
+        const message = err instanceof Error ? err.message : String(err);
+        throw new MCPExecutionError(`MCP tool execution failed: ${message}`, tool);
       }
     }
 
@@ -66,10 +70,10 @@ export class McpGateway {
     if (lastError instanceof GatewayError) {
       throw lastError;
     }
+    const message =
+      lastError instanceof Error ? lastError.message : String(lastError);
     throw new MCPExecutionError(
-      `MCP tool execution failed after retries: ${
-        (lastError as any)?.message || String(lastError)
-      }`,
+      `MCP tool execution failed after retries: ${message}`,
       tool,
     );
   }
@@ -99,30 +103,38 @@ export class McpGateway {
       throw new MCPExecutionError(errMsg, tool);
     }
 
-    // Process standard MCP tool content envelope
     if (Array.isArray(result.content) && result.content.length > 0) {
       const textItem = result.content.find((item) => item.type === "text");
       if (textItem && textItem.text) {
         try {
-          const parsed = JSON.parse(textItem.text);
+          const parsed = JSON.parse(textItem.text) as Record<string, unknown>;
           if (parsed && typeof parsed === "object") {
             if ("success" in parsed && parsed.success === false) {
+              const errorValue = parsed.error;
+              const errorText =
+                typeof errorValue === "string"
+                  ? errorValue
+                  : errorValue &&
+                      typeof errorValue === "object" &&
+                      "message" in errorValue &&
+                      typeof (errorValue as { message: unknown }).message === "string"
+                    ? (errorValue as { message: string }).message
+                    : "Tool execution failed";
               return {
                 success: false,
-                error: parsed.error?.message || parsed.error || "Tool execution failed",
+                error: errorText,
                 data: parsed.data as T,
-                metadata: parsed.metadata,
+                metadata: parsed.metadata as Record<string, unknown> | undefined,
               };
             }
             return {
-              success: parsed.success ?? true,
+              success: (parsed.success as boolean | undefined) ?? true,
               data: (parsed.data ?? parsed) as T,
-              error: parsed.error,
-              metadata: parsed.metadata,
+              error: typeof parsed.error === "string" ? parsed.error : undefined,
+              metadata: parsed.metadata as Record<string, unknown> | undefined,
             };
           }
-        } catch (_) {
-          // If not JSON, treat raw text as data
+        } catch {
           return {
             success: true,
             data: textItem.text as unknown as T,
@@ -139,3 +151,10 @@ export class McpGateway {
 }
 
 export const mcpGateway = new McpGateway();
+
+export async function execute<T = unknown>(
+  tool: string,
+  payload: Record<string, unknown> = {},
+): Promise<ToolResult<T>> {
+  return mcpGateway.execute<T>(tool, payload);
+}

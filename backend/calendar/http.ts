@@ -27,6 +27,7 @@ import {
   queryRecord,
 } from "./contract";
 import { CalendarService } from "./service";
+import { mountOrchestrator } from "../orchestrator/http";
 
 function wrap(
   handler: (req: Request, res: Response) => Promise<void>,
@@ -235,6 +236,8 @@ export function createApp(config: Config): express.Express {
       res.json(result);
     }),
   );
+
+  mountOrchestrator(app, config);
 
   const errors: ErrorRequestHandler = (err, _req, res, _next) => {
     if (err instanceof HttpError) {

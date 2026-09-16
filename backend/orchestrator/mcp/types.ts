@@ -37,6 +37,7 @@ export interface McpClientOptions {
   mcpUrl?: string;
   apiKey?: string;
   timeoutMs?: number;
+  jwt?: string;
 }
 
 export interface McpGatewayOptions extends McpClientOptions {
