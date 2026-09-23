@@ -96,7 +96,8 @@ PersonalAi/
 │           ├── 11_client-spa-auth-chat-usage.md
 │           ├── 12_env-production.md
 │           ├── 13_cursor-render-build-jest-types.md
-│           └── 14_grok-env-route.md
+│           ├── 14_grok-env-route.md
+│           └── 15_grok-remove-env.md
 └── backend/
     ├── package.json                  # Node.js dependencies & scripts
     ├── package-lock.json             # Lockfile
@@ -302,10 +303,10 @@ PersonalAi/
 - **`activeagents/finished/`:** Archive directory holding completed agent task logs once work is finalized and verified.
 
 ### `backend/` Root Files
-- **`backend/server.ts`:** Entry point for the backend. Loads environment variables, connects to MongoDB via `db.ts`, initializes Express routes (`auth`, `calendar`, `GET /env`), initializes MCP handlers (`/mcp`), and starts the HTTP server. `GET /env` is registered inside `createApp` before the SPA fallback.
+- **`backend/server.ts`:** Entry point for the backend. Loads environment variables, connects to MongoDB via `db.ts`, initializes Express routes (`auth`, `calendar`), initializes MCP handlers (`/mcp`), and starts the HTTP server.
 - **`backend/config.ts`:** Centralized configuration loader using `dotenv`. Exports application settings: `MONGODB_URI`, `PORT`, `TIMEZONE`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `MCP_API_KEY`, `CORS_ORIGINS`, `DEEPSEEK_API_KEY`, `DEEPSEEK_URL`, `DEEPSEEK_MODEL`, `DEEPSEEK_TOKEN_BUDGET`.
 - **`backend/db.ts`:** Mongoose connection manager. Connects to Atlas/local MongoDB and executes `syncIndexes()` on all models (`activities`, `users`, `scheduling_preferences`, `memories`, `conversation_states`, `messages`, `usage`).
-- **`backend/web-static.ts`:** Serves the built SPA from `web/dist` at `/` with fallback to `index.html` for non-API GET routes. API prefixes, including `/env`, are left for route handlers. No-ops when the frontend has not been built.
+- **`backend/web-static.ts`:** Serves the built SPA from `web/dist` at `/` with fallback to `index.html` for non-API GET routes. No-ops when the frontend has not been built.
 - **`backend/errors.ts`:** Defines custom `HttpError` class with status code support (e.g. 400, 401, 403, 404, 409).
 - **`backend/MCP_DEPLOYMENT.md`:** Architectural notes and deployment documentation for Render remote MCP hosting.
 - **`backend/package.json`:** Defines dependencies (`express`, `mongoose`, `jsonwebtoken`, `google-auth-library`, `@modelcontextprotocol/sdk`, `zod`, `dotenv`) and npm scripts (`dev`, `build`, `start`, `test`, `typecheck`).
@@ -407,4 +408,4 @@ PersonalAi/
   - `app.ts` — Creates Supertest Express test app instance.
   - `auth.ts` — Generates valid, expired, and invalid test JWT tokens.
   - `mcpHttp.ts` — Supertest helper for testing Streamable HTTP MCP sessions.
-- **35 Test Suites (`*.test.ts`):** Complete automated regression coverage across authentication (Google OAuth, per-user API key, JWT), authorization, activity CRUD operations, recurrence expansion, reminder parsing, timezone accuracy, optimistic concurrency locking, multi-tenant security isolation, performance benchmarks (1,000 items under 500ms), calendar intelligence preferences, Karen memory CRUD, conversation state tracking, chat transcript persistence, DeepSeek usage budget, reflection insights, MCP HTTP/stdio session transport, MCP Gateway, and the AI Orchestrator pipeline (`POST /chat`). 275 tests.
+- **35 Test Suites (`*.test.ts`):** Complete automated regression coverage across authentication (Google OAuth, per-user API key, JWT), authorization, activity CRUD operations, recurrence expansion, reminder parsing, timezone accuracy, optimistic concurrency locking, multi-tenant security isolation, performance benchmarks (1,000 items under 500ms), calendar intelligence preferences, Karen memory CRUD, conversation state tracking, chat transcript persistence, DeepSeek usage budget, reflection insights, MCP HTTP/stdio session transport, MCP Gateway, and the AI Orchestrator pipeline (`POST /chat`). 274 tests.

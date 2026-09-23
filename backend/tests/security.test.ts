@@ -94,17 +94,6 @@ describe("Security & Validation Tests", () => {
     expect(res.body.activities).toEqual([]);
   });
 
-  it("should return runtime environment JSON from GET /env", async () => {
-    process.env.RYTHAM_ENV_PROBE = "present";
-    const res = await supertest(app).get("/env");
-    delete process.env.RYTHAM_ENV_PROBE;
-
-    expect(res.status).toBe(200);
-    expect(res.headers["content-type"]).toMatch(/json/);
-    expect(res.body.RYTHAM_ENV_PROBE).toBe("present");
-    expect(JSON.stringify(res.body)).not.toMatch(/<!DOCTYPE/i);
-  });
-
   it("should allow only configured origins, methods, and no credentials in production CORS", async () => {
     const allowed = "https://app.example.com";
     const prodApp = createApp({

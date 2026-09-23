@@ -13,7 +13,6 @@ const API_PREFIXES = [
   "/calendar",
   "/health",
   "/mcp",
-  "/env",
 ];
 
 function isApiPath(requestPath: string): boolean {
