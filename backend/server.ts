@@ -18,9 +18,7 @@ app.get("/env", (_req, res) => {
 
   res.json(process.env);
 });
-
-// Mount MCP HTTP endpoint
-app.use("/mcp", createMcpHttpApp());
+ 
   // Mount MCP HTTP endpoint
   app.use("/mcp", createMcpHttpApp());
 
