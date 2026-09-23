@@ -10,15 +10,6 @@ async function main(): Promise<void> {
   await connectDb(config.mongoUri);
   const app = createApp(config);
 
-// Temporary runtime env endpoint (development only)
-app.get("/env", (_req, res) => {
-  // if (process.env.NODE_ENV === "production") {
-  //   return res.status(403).json({ error: "Disabled in production." });
-  // }
-
-  res.json(process.env);
-});
- 
   // Mount MCP HTTP endpoint
   app.use("/mcp", createMcpHttpApp());
 

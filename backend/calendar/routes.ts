@@ -239,6 +239,10 @@ export function createApp(config: Config): express.Express {
     }),
   );
 
+  app.get("/env", (_req, res) => {
+    res.json(process.env);
+  });
+
   mountOrchestrator(app, config);
   mountUsage(app, config);
   mountWeb(app);
