@@ -137,6 +137,35 @@ Before performing ANY work on the codebase, every AI agent MUST execute the foll
 - **Single Service Implementation:** MCP tools and REST endpoints MUST call the exact same service layer methods (e.g., `CalendarService`, `CalendarIntelligenceService`, `MemoryService`). Never duplicate business logic.
 - **Read-Only Conflict & Slot Logic:** `CalendarService.conflicts` and `CalendarService.suggestSlot` are read-only tools. The API does not auto-reschedule activities; it returns conflict/slot data, allowing the AI to determine the appropriate follow-up tool call.
 
+## 4.1 Self-Contained Feature Architecture & File Guidelines
+1. **Self-Contained Features (`backend/<feature>/`)**:
+   - Every feature must be contained in its dedicated directory under `backend/` (e.g. `auth/`, `calendar/`, `chat/`, `mcp/`).
+   - Rule: If a feature needs changes, open ONLY its folder.
+2. **Predictable File Naming Convention**:
+   - Every feature module MUST use predictable filenames: `routes.ts`, `service.ts`, `types.ts`.
+3. **Thin Route Files**:
+   - Route files (`routes.ts`) MUST remain thin. Route definitions call handlers or service methods directly: `router.post("/login", login)`. Heavy business logic belongs in `service.ts`.
+4. **File Line Length Targets**:
+   - **50–200 lines**: Ideal file size target.
+   - **300 lines**: Acceptable max limit for single files.
+   - **500+ lines**: STRICTLY FORBIDDEN. Any file reaching 500+ lines MUST be split into modular sub-files within that feature directory (e.g. `crud.ts`, `conflicts.ts`, `operations.ts`, `schemas.ts`).
+5. **Shared Directory (`backend/shared/`)**:
+   - A `backend/shared/` folder is reserved strictly for truly reusable, cross-cutting infrastructure code:
+     - `errors.ts`: `HttpError` and HTTP status definitions.
+     - `logger.ts`: Structured logging utilities (`logMcpRequest`, `startTimer`).
+     - `utils.ts`: Utility helper functions.
+     - `types.ts`: Universal root types.
+   - Do NOT put feature-specific code in `shared/`.
+6. **Strictly Forbidden Architecture Anti-Patterns**:
+   - ❌ Repository pattern
+   - ❌ Dependency Injection (DI)
+   - ❌ Microservices
+   - ❌ Event Bus
+   - ❌ CQRS
+   - ❌ Generic abstraction layers
+   - ❌ Premature interfaces everywhere
+
+
 ---
 
 # 5. Decision Policy Matrix

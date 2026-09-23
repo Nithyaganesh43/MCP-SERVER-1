@@ -1,6 +1,7 @@
 import { loadConfig } from "./config";
 import { connectDb } from "./db";
-import { createApp } from "./calendar/http";
+import { createApp } from "./calendar/routes";
+
 import { createMcpHttpApp } from "./mcp/httpTransport";
 import type { Server } from "node:http";
 

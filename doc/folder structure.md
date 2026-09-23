@@ -108,9 +108,14 @@ PersonalAi/
     ├── server.ts                     # Express server entry point & startup
     ├── config.ts                     # Centralized env loader & config constants
     ├── db.ts                         # Mongoose connection & index sync helper
-    ├── errors.ts                     # HttpError class definition
+    ├── errors.ts                     # Re-exports HttpError from shared/errors.ts
     ├── web-static.ts                 # Serves backend/web/dist at `/` (SPA fallback)
     ├── MCP_DEPLOYMENT.md             # Remote Render MCP deployment notes
+    ├── shared/                       # Cross-cutting infrastructure utilities ONLY
+    │   ├── errors.ts                 # HttpError class definition
+    │   ├── logger.ts                 # Structured MCP logging & timing utilities
+    │   ├── utils.ts                  # Shared utility functions (random string generation, JSON parse)
+    │   └── types.ts                  # Shared root API response types
     ├── model/
     │   ├── index.ts                  # Barrel export for model types, schemas, & constants
     │   ├── constants.ts              # Enums, defaults, priorities, & collection indexes
@@ -131,12 +136,17 @@ PersonalAi/
     │   ├── history.types.ts          # History TypeScript interfaces
     │   └── history.schema.ts         # Mongoose schema for histories collection
     ├── auth/
+    │   ├── routes.ts                 # Thin Auth REST routes (/auth/google, /auth/api-key, /auth/me)
+    │   ├── service.ts                # Auth business logic (findOrCreateUser, ensureApiKey, login)
+    │   ├── types.ts                  # UserView & Auth payload interface contracts
     │   ├── google.ts                 # Google OAuth client & auth code exchanger
     │   ├── jwt.ts                    # Backend JWT sign & verify utilities (sub = userId)
     │   ├── middleware.ts             # Bearer JWT or per-user API key authentication
-    │   └── http.ts                   # Auth REST (/auth/google, /api/google, /auth/api-key, /auth/me)
+    │   └── http.ts                   # Legacy compatibility re-exporter
     ├── chat/
-    │   └── service.ts                # Single long conversation transcript (append/list)
+    │   ├── routes.ts                 # Chat REST endpoint definitions
+    │   ├── service.ts                # Single long conversation transcript (append/list)
+    │   └── types.ts                  # Chat message view and request input interfaces
     ├── usage/
     │   ├── service.ts                # DeepSeek token usage snapshot & record
     │   └── http.ts                   # GET /api/usage
@@ -156,11 +166,20 @@ PersonalAi/
     │           ├── Chat.tsx          # Single conversation, one message per send
     │           └── Usage.tsx         # DeepSeek token usage
     ├── calendar/
-    │   ├── contract.ts               # Tool I/O types, z parsers, update paths, REST mapping
-    │   ├── service.ts                # CalendarService (create, update, delete, list, reschedule, etc.)
-    │   ├── http.ts                   # REST endpoint router delegating to CalendarService
+    │   ├── routes.ts                 # Thin REST endpoint router delegating to CalendarService
+    │   ├── service.ts                # Orchestrator CalendarService class delegating to sub-domain modules
+    │   ├── types.ts                  # Calendar tool & view interface definitions (< 200 lines)
+    │   ├── schemas.ts                # Core activity input parsers & validators (< 300 lines)
+    │   ├── ops-schemas.ts            # Operations input parsers (conflicts, slots, summaries) (< 300 lines)
+    │   ├── crud.ts                   # Activity CRUD and list bounds (< 260 lines)
+    │   ├── conflicts.ts              # Conflict checking, slot suggestions, weekly summary (< 180 lines)
+    │   ├── operations.ts             # Reschedule, undo, rescue, split, rollover, preferences (< 320 lines)
+    │   ├── preferences.ts            # User preference loading & transformations (< 80 lines)
+    │   ├── contract.ts               # Re-exports types and schemas for compatibility
+    │   ├── http.ts                   # Legacy compatibility re-exporter
     │   ├── time.ts                   # Zoned date bounds, gap calculation, floating packing
     │   └── recurrence.ts             # Recurrence rule parser & in-memory expansion
+
     ├── calendar-intelligence/
     │   ├── contract.ts               # Calendar Intelligence tool I/O types & parsers
     │   └── service.ts                # CalendarIntelligenceService (preferences, capacity, missed)

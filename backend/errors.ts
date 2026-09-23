@@ -1,9 +1,2 @@
-export class HttpError extends Error {
-  readonly status: number;
+export { HttpError } from "./shared/errors";
 
-  constructor(status: number, message: string) {
-    super(message);
-    this.name = "HttpError";
-    this.status = status;
-  }
-}
